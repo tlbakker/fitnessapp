@@ -7,13 +7,16 @@
 //   sets       { id, userId, sessionId, exerciseId, idx, reps, weight, createdAt }
 //   templates  (stap 2) vaste workouts: { id, userId, name, items: [{ exerciseId, sets, reps, weight }] }
 //   plans      (stap 2) agenda: { id, userId, date, templateId, overrides }
+//   measurements lichaamsmetingen: { id, userId, date, weight, fatPct, muscleKg, waistCm, note }
 //   meta       instellingen en profielen: { key, value }
 //
 // Elk record heeft een userId, zodat later een tweede gebruiker kan worden toegevoegd.
 
 const DB_NAME = 'fitnessapp';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 export const USER_ID = 'me';
+
+const STORES = ['exercises', 'sessions', 'sets', 'templates', 'plans', 'measurements', 'meta'];
 
 let dbPromise;
 
@@ -40,6 +43,10 @@ export function openDB() {
       }
       if (!db.objectStoreNames.contains('plans')) {
         const s = db.createObjectStore('plans', { keyPath: 'id' });
+        s.createIndex('date', 'date');
+      }
+      if (!db.objectStoreNames.contains('measurements')) {
+        const s = db.createObjectStore('measurements', { keyPath: 'id' });
         s.createIndex('date', 'date');
       }
       if (!db.objectStoreNames.contains('meta')) {
@@ -105,7 +112,7 @@ export async function deleteSession(id) {
 
 /** Alle stores als één JSON-object (voor back-up). */
 export async function exportAll() {
-  const names = ['exercises', 'sessions', 'sets', 'templates', 'plans', 'meta'];
+  const names = STORES;
   const out = { app: 'fitnessapp', version: DB_VERSION, exportedAt: new Date().toISOString() };
   for (const n of names) out[n] = await getAll(n);
   return out;
@@ -114,7 +121,7 @@ export async function exportAll() {
 /** Zet een back-up terug. Bestaande records met hetzelfde id worden overschreven. */
 export async function importAll(data) {
   if (!data || data.app !== 'fitnessapp') throw new Error('Dit is geen back-up van deze app.');
-  const names = ['exercises', 'sessions', 'sets', 'templates', 'plans', 'meta'];
+  const names = STORES;
   const db = await openDB();
   const tx = db.transaction(names, 'readwrite');
   let count = 0;

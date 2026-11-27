@@ -39,3 +39,28 @@ test('oefeningenlijst: unieke ids en geldige spiergroepen', () => {
   }
   assert.ok(BUILTIN_EXERCISES.length >= 50);
 });
+
+import { performance, pctChange } from '../js/calc.js';
+import { BASELINE } from '../js/exercises.js';
+
+test('performance: met gewicht geeft geschatte 1RM', () => {
+  const p = performance([{ weight: 100, reps: 5 }, { weight: 60, reps: 10 }]);
+  assert.equal(p.kind, 'e1rm');
+  assert.equal(Math.round(p.value * 10) / 10, 116.7);
+});
+
+test('performance: zonder gewicht geeft max. herhalingen of tijd', () => {
+  assert.deepEqual(performance([{ reps: 20 }, { reps: 25, weight: null }]), { value: 25, unit: 'reps', kind: 'reps' });
+  assert.equal(performance([{ reps: 60 }, { reps: 90 }], 'time').value, 90);
+  assert.equal(performance([{ reps: null }]), null);
+});
+
+test('pctChange', () => {
+  assert.equal(pctChange(100, 110), 10);
+  assert.equal(pctChange(0, 5), null);
+});
+
+test('nulmeting gebruikt bestaande oefeningen', () => {
+  const ids = new Set(BUILTIN_EXERCISES.map((e) => e.id));
+  for (const id of BASELINE.exerciseIds) assert.ok(ids.has(id), id);
+});

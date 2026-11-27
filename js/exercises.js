@@ -142,3 +142,36 @@ export const BUILTIN_EXERCISES = RAW.map(([id, name, group, equipment, secondary
 export function groupLabel(id) {
   return MUSCLE_GROUPS.find((g) => g.id === id)?.label ?? id;
 }
+
+// Vaste trainingen die de app zelf aanbiedt. Eigen workouts (stap 2) komen in de
+// 'templates'-store; deze hebben een vast id zodat de voortgang ernaar kan verwijzen.
+export const BASELINE = {
+  id: 'baseline',
+  name: 'Nulmeting',
+  exerciseIds: [
+    'back-squat', // Quadriceps
+    'bench-press', // Borst
+    'tg-lat-machine', // Rug
+    'overhead-press', // Schouders
+    'romanian-deadlift', // Hamstrings
+    'hip-thrust', // Bilspieren
+    'barbell-curl', // Biceps
+    'triceps-pushdown', // Triceps
+    'standing-calf-raise', // Kuiten
+    'back-extension', // Onderrug
+    'push-up', // Uithouding bovenlichaam (max. herhalingen)
+    'plank', // Uithouding romp (max. tijd)
+  ],
+  instructions: `
+<p>Je hoeft geen echte 1RM te tillen: na een jaar rust is dat onnodig riskant. De app schat je 1RM uit een zware set van <strong>5 tot 8 herhalingen</strong> (Epley).</p>
+<ol>
+  <li><strong>Warm op</strong>: 5 minuten cardio, daarna per oefening 2 à 3 lichte opbouwsets (bijv. 10 reps licht, 5 reps middel). Log die gerust; de zwaarste telt.</li>
+  <li><strong>Testset</strong>: kies een gewicht waarmee je 5 tot 8 nette herhalingen haalt en stop als er nog 1 à 2 in de tank zitten. Te makkelijk (meer dan 10)? Rust 3 minuten en probeer zwaarder.</li>
+  <li><strong>Rust</strong> 2 à 3 minuten tussen zware sets.</li>
+  <li><strong>Uithouding</strong>: push-ups zoveel mogelijk in één set met nette techniek; plank zo lang mogelijk (vul de seconden in bij "sec").</li>
+</ol>
+<p>Twaalf oefeningen is veel voor één keer. Splits gerust over twee dagen: start dan de tweede dag opnieuw een nulmeting en verwijder wat je al gedaan hebt.</p>
+<p>Herhaal de nulmeting na 8 tot 12 weken om je vooruitgang te zien.</p>`,
+};
+
+export const TEMPLATES = [BASELINE];
