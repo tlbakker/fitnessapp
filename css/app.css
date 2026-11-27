@@ -208,3 +208,5 @@ table.data a { text-decoration: underline; text-decoration-color: var(--line); }
 
 /* 5 tabbladen */
 .tabbar a { font-size: 0.68rem; }
+table.data.reps th, table.data.reps td { text-align: center; padding: 6px 2px; }
+table.data.reps { margin: 8px 0; }

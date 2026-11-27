@@ -64,3 +64,16 @@ test('nulmeting gebruikt bestaande oefeningen', () => {
   const ids = new Set(BUILTIN_EXERCISES.map((e) => e.id));
   for (const id of BASELINE.exerciseIds) assert.ok(ids.has(id), id);
 });
+
+import { weightForReps, REP_TARGETS } from '../js/calc.js';
+
+test('weightForReps is de omgekeerde Epley', () => {
+  const oneRM = epley1RM(60, 14);
+  assert.equal(Math.round(oneRM), 88);
+  assert.ok(Math.abs(weightForReps(oneRM, 14) - 60) < 1e-9);
+  assert.equal(Math.round(weightForReps(oneRM, 10)), 66);
+  assert.equal(Math.round(weightForReps(oneRM, 20)), 53);
+  assert.equal(weightForReps(100, 1), 100);
+  assert.equal(weightForReps(0, 10), 0);
+  assert.deepEqual(REP_TARGETS, [6, 8, 10, 12, 15, 20, 25]);
+});

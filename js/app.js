@@ -1,5 +1,5 @@
 import { BUILTIN_EXERCISES, MUSCLE_GROUPS, EQUIPMENT, groupLabel, BASELINE, TEMPLATES } from './exercises.js';
-import { epley1RM, bestSet, volume, fmt } from './calc.js';
+import { epley1RM, bestSet, volume, fmt, weightForReps, roundTo, REP_TARGETS } from './calc.js';
 import * as db from './db.js';
 import { h, todayISO, fmtDate, setLabel, sortSessions, toast } from './ui.js';
 import { viewProgress } from './progress.js';
@@ -640,6 +640,7 @@ async function viewExercise(id) {
         }, 'Verwijderen'),
       ),
     ),
+    !isTime && history.length ? workingWeightsCard(history[0], bySession.get(history[0].id), e) : null,
     history.length ? h('h2', {}, 'Geschiedenis') : h('p', { class: 'muted center' }, 'Nog niet gelogd.'),
     history.map((s) => {
       const ss = bySession.get(s.id).sort((a, b) => a.idx - b.idx);
@@ -652,6 +653,25 @@ async function viewExercise(id) {
         h('div', { class: 'small' }, ss.map((x) => setLabel(x, e)).join(' · ')),
       );
     }),
+  );
+}
+
+/** Werkgewichten per aantal herhalingen, teruggerekend uit de geschatte 1RM van de laatste training. */
+function workingWeightsCard(session, sessionSets, e) {
+  const b = bestSet(sessionSets);
+  if (!b) return null;
+  return h('div', { class: 'card' },
+    h('div', { class: 'row' },
+      h('div', { class: 'grow strong' }, 'Werkgewicht per aantal reps'),
+      h('div', { class: 'muted small' }, `1RM ≈ ${fmt(b.e1rm)} kg`),
+    ),
+    h('table', { class: 'data reps' },
+      h('thead', {}, h('tr', {}, REP_TARGETS.map((r) => h('th', { class: 'num' }, `${r}×`)))),
+      h('tbody', {}, h('tr', {}, REP_TARGETS.map((r) => h('td', { class: 'num strong' }, fmt(roundTo(weightForReps(b.e1rm, r), 0.5)))))),
+    ),
+    h('p', { class: 'muted small flush' },
+      `kg, op basis van je beste set op ${fmtDate(session.date, { day: 'numeric', month: 'short' })} (${setLabel(b.set, e)}), Epley. `,
+      'Het gewicht waarmee je die reps nét haalt: kies voor werksets iets lichter als je 1 à 2 reps over wilt houden.'),
   );
 }
 

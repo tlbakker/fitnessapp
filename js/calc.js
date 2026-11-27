@@ -61,3 +61,14 @@ export function pctChange(a, b) {
   if (!(a > 0) || b == null) return null;
   return ((b - a) / a) * 100;
 }
+
+/** Omgekeerde Epley: welk gewicht hoort bij een set van `reps` herhalingen, gegeven een (geschatte) 1RM. */
+export function weightForReps(oneRM, reps) {
+  const r = Number(reps);
+  if (!(oneRM > 0) || !(r > 0)) return 0;
+  if (r === 1) return oneRM;
+  return oneRM / (1 + r / 30);
+}
+
+/** Herhalingsaantallen voor de werkgewicht-tabel. */
+export const REP_TARGETS = [6, 8, 10, 12, 15, 20, 25];
