@@ -271,3 +271,10 @@ a.btn.small { display: inline-block; }
 .form-preview { color: var(--accent); margin-top: auto; }
 .target-line .done { color: var(--accent); }
 @media (max-width: 360px) { .form-list { grid-template-columns: 1fr; } }
+
+/* Garmin: hartslag bij een training */
+.hr-stats { display: flex; gap: 18px; flex-wrap: wrap; }
+.hr-stats div { display: flex; flex-direction: column; }
+.hr-stats b { font-size: 1.3rem; }
+.hr-chart { width: 100%; height: 70px; display: block; }
+.garmin details p { margin: 6px 0; }

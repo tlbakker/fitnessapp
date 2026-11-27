@@ -7,6 +7,7 @@ import { viewWorkouts, viewWorkoutEdit, viewImport, workoutRow, allTemplates, ge
 import { buildTarget, readTarget, schemeLabel, setLabel as goalSetLabel } from './schemes.js';
 import { viewAgenda, plannedToday } from './agenda.js';
 import { greeting } from './greeting.js';
+import { garminCard } from './garmin.js';
 
 const $app = document.getElementById('app');
 const $title = document.getElementById('title');
@@ -294,6 +295,7 @@ async function viewSession(id) {
       h('span', { class: 'muted small' }, 'Notitie'),
       h('textarea', { rows: 2, placeholder: 'Hoe ging het?', value: session.note || '', oninput: (e) => { session.note = e.target.value; save(); } }),
     ),
+    sessionSets.length || session.hr ? garminCard(session, sessionSets, ex) : null,
     finishBtn,
     session.exerciseIds.length ? h('button', { class: 'btn ghost', onclick: () => saveSessionAsWorkout(session, sessionSets, ctx()) }, 'Opslaan als workout') : null,
     deleteBtn,
