@@ -79,6 +79,11 @@ main { max-width: 640px; margin: 0 auto; padding: 14px 16px; }
 .card.link:active { opacity: .7; }
 .card.hero { text-align: center; padding: 22px 14px; }
 .card.hero p { margin: 0 0 12px; }
+.card.hero .greeting { font-size: 1.35rem; margin-bottom: 2px; }
+.card.hero .date { margin-bottom: 10px; }
+.card.hero .btn { display: block; width: 100%; }
+.card.hero .btn + .btn { margin-top: 8px; }
+.card.hero .name-hint { display: inline-block; margin-top: 10px; }
 .card.hero p::first-letter { text-transform: uppercase; }
 
 .pill {

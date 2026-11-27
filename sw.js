@@ -16,6 +16,7 @@ const FILES = [
   './js/workouts.js',
   './js/agenda.js',
   './js/schemes.js',
+  './js/greeting.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

@@ -184,3 +184,20 @@ test('conditie: vormen en prestatie', async () => {
   assert.deepEqual(performance([{ reps: 30, km: 6 }], 'cardio'), { value: 12, unit: 'km/u', kind: 'speed' });
   assert.equal(performance([{ reps: 20 }, { reps: 10 }], 'cardio').value, 30);
 });
+
+test('groet: naam, dagdeel en geplande training', async () => {
+  const { greeting, dayPart } = await import('../js/greeting.js');
+  assert.equal(dayPart(8), 'Goedemorgen');
+  assert.equal(dayPart(14), 'Goedemiddag');
+  assert.equal(dayPart(20), 'Goedenavond');
+  assert.equal(greeting({ name: 'Tim', hour: 8 }).title, 'Goedemorgen, Tim!');
+  assert.equal(greeting({ hour: 20 }).title, 'Goedenavond!');
+  for (let d = 1; d <= 28; d++) {
+    const date = `2026-12-${String(d).padStart(2, '0')}`;
+    assert.match(greeting({ date, planned: ['Push'] }).line, /Push/);
+    assert.match(greeting({ date, done: ['Benen'] }).line, /Benen/);
+  }
+  // Zelfde dag = zelfde zin
+  assert.equal(greeting({ date: '2026-12-01', planned: ['Push'] }).line, greeting({ date: '2026-12-01', planned: ['Push'] }).line);
+  assert.match(greeting({ planned: ['Push', 'Conditie'] }).line, /Push en Conditie/);
+});

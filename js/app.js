@@ -6,6 +6,7 @@ import { viewProgress } from './progress.js';
 import { viewWorkouts, viewWorkoutEdit, viewImport, workoutRow, allTemplates, getTemplate, templateItems, saveSessionAsWorkout } from './workouts.js';
 import { buildTarget, readTarget, schemeLabel, setLabel as goalSetLabel } from './schemes.js';
 import { viewAgenda, plannedToday } from './agenda.js';
+import { greeting } from './greeting.js';
 
 const $app = document.getElementById('app');
 const $title = document.getElementById('title');
@@ -133,24 +134,32 @@ async function viewTraining() {
   setTitle('Training');
   const sessions = sortSessions(await db.getAll('sessions')).slice(0, 3);
   const sets = await db.getAll('sets');
-  const today = await plannedToday();
   const everything = await allTemplates();
   const templates = everything.filter((t) => !t.builtin);
+  const today = (await plannedToday())
+    .map((p) => ({ ...p, template: everything.find((x) => x.id === p.plan.templateId) }))
+    .filter((p) => p.template);
+  const open = today.filter((p) => p.status !== 'done');
+  const profile = await db.get('meta', 'profile');
+  const g = greeting({
+    name: profile?.name,
+    hour: new Date().getHours(),
+    date: todayISO(),
+    planned: open.map((p) => p.template.name),
+    done: today.filter((p) => p.status === 'done').map((p) => p.template.name),
+  });
   return h(
     'div',
     { class: 'stack' },
-    today.map(({ plan, session }) => {
-      const t = everything.find((x) => x.id === plan.templateId);
-      if (!t) return null;
-      return h('div', { class: 'card stack tight planned-today' },
-        h('div', { class: 'muted small' }, 'Gepland voor vandaag'),
-        h('div', { class: 'strong' }, t.name),
-        h('button', { class: 'btn primary', onclick: () => startSession(t, { planId: plan.id }) }, session ? 'Verder met deze training' : `Start ${t.name}`),
-      );
-    }),
-    h('div', { class: 'card hero' },
-      h('p', { class: 'muted' }, fmtDate(todayISO(), { weekday: 'long', day: 'numeric', month: 'long' })),
-      h('button', { class: 'btn primary big', onclick: () => startSession() }, 'Lege training starten'),
+    h('div', { class: 'card hero' + (open.length ? ' planned-today' : '') },
+      h('h2', { class: 'flush greeting' }, g.title),
+      h('p', { class: 'muted small date' }, fmtDate(todayISO(), { weekday: 'long', day: 'numeric', month: 'long' })),
+      h('p', {}, g.line),
+      open.map(({ plan, session, template: t }) =>
+        h('button', { class: 'btn primary big', onclick: () => startSession(t, { planId: plan.id }) }, session ? `Verder met ${t.name}` : `Start ${t.name}`),
+      ),
+      h('button', { class: open.length ? 'btn ghost' : 'btn primary big', onclick: () => startSession() }, 'Lege training starten'),
+      profile?.name ? null : h('a', { class: 'small muted name-hint', href: '#/meer' }, 'Vul je naam in onder Meer'),
     ),
     h('div', { class: 'row' }, h('h2', { class: 'grow' }, 'Workouts'), h('a', { class: 'btn small ghost', href: '#/workouts' }, 'Beheren')),
     templates.length
@@ -811,7 +820,20 @@ async function viewMore() {
     },
   });
 
+  const profile = (await db.get('meta', 'profile')) || { key: 'profile', userId: db.USER_ID, name: '' };
+  const nameIn = h('input', {
+    type: 'text',
+    value: profile.name || '',
+    placeholder: 'Je voornaam',
+    autocomplete: 'given-name',
+    oninput: (e) => { profile.name = e.target.value.trim().slice(0, 40); db.put('meta', profile); },
+  });
+
   return h('div', { class: 'stack' },
+    h('div', { class: 'card stack tight' },
+      h('h2', { class: 'flush' }, 'Profiel'),
+      h('label', {}, h('span', { class: 'muted small' }, 'Naam (voor de groet op het voorblad)'), nameIn),
+    ),
     h('div', { class: 'card stack' },
       h('h2', { class: 'flush' }, 'Gegevens'),
       h('p', { class: 'small' }, `${counts.sessions} trainingen, ${counts.sets} sets, ${counts.exercises} eigen oefeningen.`),
