@@ -4,7 +4,7 @@
 import * as db from './db.js';
 import { h, fill, toast, todayISO } from './ui.js';
 import { BASELINE, BUILTIN_WORKOUTS } from './exercises.js';
-import { FORMS, CUSTOM, formById, normalizeItem, itemLabel, packWorkout, encodeWorkout, decodeWorkout } from './schemes.js';
+import { FORMS, CUSTOM, formById, formFits, normalizeItem, itemLabel, packWorkout, encodeWorkout, decodeWorkout } from './schemes.js';
 
 /** De oefeningen van een workout als [{ exerciseId, form, reps }] (form null = geen doel). */
 export function templateItems(t) {
@@ -119,6 +119,7 @@ export async function viewWorkoutEdit(id, ctx) {
     return { ...n, form: n.form === t.form ? null : n.form };
   });
 
+  const isCardio = (exId) => ctx.ex(exId).metric === 'cardio';
   const nameIn = h('input', { type: 'text', value: t.name, placeholder: 'Bijv. Push, Benen, Full body A' });
   const formList = h('div', { class: 'form-list' });
   const list = h('div', { class: 'stack tight' });
@@ -142,6 +143,8 @@ export async function viewWorkoutEdit(id, ctx) {
 
   function formSelect(item) {
     const current = item.form ?? '';
+    const cardio = isCardio(item.exerciseId);
+    const wf = formById(t.form);
     return h('select', {
       'aria-label': 'Vorm voor deze oefening',
       onchange: (e) => {
@@ -154,9 +157,9 @@ export async function viewWorkoutEdit(id, ctx) {
         draw();
       },
     },
-      h('option', { value: '', selected: current === '' }, `Vorm van de workout${formById(t.form) ? ` (${formById(t.form).name})` : ''}`),
-      FORMS.map((f) => h('option', { value: f.id, selected: current === f.id }, f.name)),
-      h('option', { value: CUSTOM, selected: current === CUSTOM }, 'Eigen reps per set'),
+      h('option', { value: '', selected: current === '' }, wf && formFits(wf.id, cardio) ? `Vorm van de workout (${wf.name})` : 'Geen doel (vrij loggen)'),
+      FORMS.filter((f) => formFits(f.id, cardio)).map((f) => h('option', { value: f.id, selected: current === f.id }, f.name)),
+      cardio ? null : h('option', { value: CUSTOM, selected: current === CUSTOM }, 'Eigen reps per set'),
     );
   }
 
@@ -185,7 +188,7 @@ export async function viewWorkoutEdit(id, ctx) {
           h('div', { class: 'row' },
             h('div', { class: 'grow' },
               h('div', { class: 'strong' }, ctx.ex(item.exerciseId).name),
-              item.form === CUSTOM ? null : h('div', { class: 'muted small' }, itemLabel(item, t.form)),
+              item.form === CUSTOM ? null : h('div', { class: 'muted small' }, itemLabel(item, t.form, isCardio(item.exerciseId)) || 'Geen doel: vrij loggen'),
             ),
             h('button', { class: 'icon', 'aria-label': 'Omhoog', disabled: i === 0, onclick: () => { items.splice(i - 1, 0, items.splice(i, 1)[0]); draw(); } }, '↑'),
             h('button', { class: 'icon', 'aria-label': 'Omlaag', disabled: i === items.length - 1, onclick: () => { items.splice(i + 1, 0, items.splice(i, 1)[0]); draw(); } }, '↓'),
@@ -204,7 +207,7 @@ export async function viewWorkoutEdit(id, ctx) {
   return h('div', { class: 'stack' },
     h('label', { class: 'card' }, h('span', { class: 'muted small' }, 'Naam'), nameIn),
     h('h2', {}, '1. Trainingsvorm'),
-    h('p', { class: 'muted small flush' }, 'Het gewicht per set rekent de app tijdens de training uit je eigen geschatte 1RM.'),
+    h('p', { class: 'muted small flush' }, 'Het gewicht per set rekent de app tijdens de training uit je eigen geschatte 1RM. Krachtvormen gelden voor krachtoefeningen, intervallen voor conditieapparaten.'),
     formList,
     h('h2', {}, '2. Oefeningen'),
     list,
@@ -246,6 +249,7 @@ export function saveSessionAsWorkout(session, sessionSets, ctx) {
   const items = session.exerciseIds.map((exerciseId) => {
     const done = sessionSets.filter((s) => s.exerciseId === exerciseId && s.reps).sort((a, b) => a.idx - b.idx);
     const target = session.targets?.[exerciseId];
+    if (ctx.ex(exerciseId).metric === 'cardio') return { exerciseId, form: target?.form ?? null, reps: [] };
     if (done.length) return { exerciseId, form: CUSTOM, reps: done.map((s) => Number(s.reps)) };
     if (target?.form && target.form !== CUSTOM) return { exerciseId, form: target.form, reps: [] };
     return { exerciseId, form: target?.sets?.length ? CUSTOM : null, reps: target?.sets?.map((x) => x.reps).filter(Boolean) ?? [] };
@@ -267,7 +271,7 @@ export function saveSessionAsWorkout(session, sessionSets, ctx) {
         },
       },
         nameIn,
-        h('p', { class: 'muted small flush' }, items.map((i) => `${ctx.ex(i.exerciseId).name}${itemLabel(i) ? ` (${itemLabel(i)})` : ''}`).join(', ')),
+        h('p', { class: 'muted small flush' }, items.map((i) => { const l = itemLabel(i, null, ctx.ex(i.exerciseId).metric === 'cardio'); return `${ctx.ex(i.exerciseId).name}${l ? ` (${l})` : ''}`; }).join(', ')),
         h('button', { class: 'btn primary', type: 'submit' }, 'Opslaan'),
       ),
     ),
@@ -353,7 +357,7 @@ export async function viewImport(code, ctx) {
     h('div', { class: 'card' },
       h('table', { class: 'data' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Oefening'), h('th', { class: 'num' }, 'Doel'))),
-        h('tbody', {}, data.items.map((i) => h('tr', {}, h('td', {}, exName(i.exerciseId)), h('td', { class: 'num' }, itemLabel(i, data.form) || '–')))),
+        h('tbody', {}, data.items.map((i) => h('tr', {}, h('td', {}, exName(i.exerciseId)), h('td', { class: 'num' }, itemLabel(i, data.form, (data.custom.find((c) => c.id === i.exerciseId) ?? ctx.ex(i.exerciseId)).metric === 'cardio') || '–')))),
       ),
     ),
     h('button', {

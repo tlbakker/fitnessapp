@@ -6,6 +6,7 @@ import { viewProgress } from './progress.js';
 import { viewWorkouts, viewWorkoutEdit, viewImport, workoutRow, allTemplates, getTemplate, templateItems, saveSessionAsWorkout } from './workouts.js';
 import { buildTarget, readTarget, schemeLabel, setLabel as goalSetLabel } from './schemes.js';
 import { viewAgenda, plannedToday } from './agenda.js';
+import { greeting } from './greeting.js';
 
 const $app = document.getElementById('app');
 const $title = document.getElementById('title');
@@ -103,7 +104,7 @@ async function startSession(template, { planId } = {}) {
   // Doel per oefening vastleggen in de training (bij willekeurige vormen wordt hier geloot)
   const targets = {};
   for (const it of items) {
-    const t = buildTarget(it, template?.form);
+    const t = buildTarget(it, template?.form, { cardio: ex(it.exerciseId).metric === 'cardio' });
     if (t) targets[it.exerciseId] = t;
   }
   const s = {
@@ -133,24 +134,32 @@ async function viewTraining() {
   setTitle('Training');
   const sessions = sortSessions(await db.getAll('sessions')).slice(0, 3);
   const sets = await db.getAll('sets');
-  const today = await plannedToday();
   const everything = await allTemplates();
   const templates = everything.filter((t) => !t.builtin);
+  const today = (await plannedToday())
+    .map((p) => ({ ...p, template: everything.find((x) => x.id === p.plan.templateId) }))
+    .filter((p) => p.template);
+  const open = today.filter((p) => p.status !== 'done');
+  const profile = await db.get('meta', 'profile');
+  const g = greeting({
+    name: profile?.name,
+    hour: new Date().getHours(),
+    date: todayISO(),
+    planned: open.map((p) => p.template.name),
+    done: today.filter((p) => p.status === 'done').map((p) => p.template.name),
+  });
   return h(
     'div',
     { class: 'stack' },
-    today.map(({ plan, session }) => {
-      const t = everything.find((x) => x.id === plan.templateId);
-      if (!t) return null;
-      return h('div', { class: 'card stack tight planned-today' },
-        h('div', { class: 'muted small' }, 'Gepland voor vandaag'),
-        h('div', { class: 'strong' }, t.name),
-        h('button', { class: 'btn primary', onclick: () => startSession(t, { planId: plan.id }) }, session ? 'Verder met deze training' : `Start ${t.name}`),
-      );
-    }),
-    h('div', { class: 'card hero' },
-      h('p', { class: 'muted' }, fmtDate(todayISO(), { weekday: 'long', day: 'numeric', month: 'long' })),
-      h('button', { class: 'btn primary big', onclick: () => startSession() }, 'Lege training starten'),
+    h('div', { class: 'card hero' + (open.length ? ' planned-today' : '') },
+      h('h2', { class: 'flush greeting' }, g.title),
+      h('p', { class: 'muted small date' }, fmtDate(todayISO(), { weekday: 'long', day: 'numeric', month: 'long' })),
+      h('p', {}, g.line),
+      open.map(({ plan, session, template: t }) =>
+        h('button', { class: 'btn primary big', onclick: () => startSession(t, { planId: plan.id }) }, session ? `Verder met ${t.name}` : `Start ${t.name}`),
+      ),
+      h('button', { class: open.length ? 'btn ghost' : 'btn primary big', onclick: () => startSession() }, 'Lege training starten'),
+      profile?.name ? null : h('a', { class: 'small muted name-hint', href: '#/meer' }, 'Vul je naam in onder Meer'),
     ),
     h('div', { class: 'row' }, h('h2', { class: 'grow' }, 'Workouts'), h('a', { class: 'btn small ghost', href: '#/workouts' }, 'Beheren')),
     templates.length
@@ -174,7 +183,7 @@ function sessionRow(s, allSets) {
       h('div', { class: 'strong' }, fmtDate(s.date), !s.finishedAt ? h('span', { class: 'pill' }, 'bezig') : null),
       h('div', { class: 'muted small' }, names.length ? names.slice(0, 4).join(', ') + (names.length > 4 ? ` +${names.length - 4}` : '') : 'Geen oefeningen'),
     ),
-    h('div', { class: 'right small muted' }, sets.length === 1 ? '1 set' : `${sets.length} sets`, h('br'), `${fmt(volume(sets))} kg`),
+    h('div', { class: 'right small muted' }, sets.length === 1 ? '1 set' : `${sets.length} sets`, volume(sets) ? [h('br'), `${fmt(volume(sets))} kg`] : null),
   );
 }
 
@@ -205,7 +214,7 @@ async function viewSession(id) {
 
   const vol = h('span');
   function refreshSummary() {
-    vol.textContent = `${sessionSets.length} sets · ${fmt(volume(sessionSets))} kg volume`;
+    vol.textContent = `${sessionSets.length} ${sessionSets.length === 1 ? 'set' : 'sets'}${volume(sessionSets) ? ` · ${fmt(volume(sessionSets))} kg volume` : ''}`;
   }
   refreshSummary();
 
@@ -308,7 +317,9 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
     onSessionChange();
     updateSummary();
   };
-  const isTime = e.metric === 'time';
+  // Conditie-sets: reps = minuten, plus km en level (niveau/weerstand). Geen gewicht/1RM.
+  const isCardio = e.metric === 'cardio';
+  const isTime = e.metric === 'time' || isCardio;
   const sets = sessionSets.filter((s) => s.exerciseId === exId).sort((a, b) => a.idx - b.idx);
   const prev = previousPerformance(session, exId, allSets, allSessions);
 
@@ -340,9 +351,9 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
       });
     const tr = h('tr', {},
       h('td', { class: 'muted' }, String(s.idx + 1)),
-      h('td', {}, num('weight', 'decimal', 'any')),
-      h('td', {}, num('reps', 'numeric', 1)),
-      e1,
+      ...(isCardio
+        ? [h('td', {}, num('reps', 'decimal', 'any')), h('td', {}, num('km', 'decimal', 'any')), h('td', {}, num('level', 'decimal', 'any'))]
+        : [h('td', {}, num('weight', 'decimal', 'any')), h('td', {}, num('reps', 'numeric', 1)), e1]),
       h('td', {}, h('button', {
         class: 'icon',
         'aria-label': 'Set verwijderen',
@@ -376,7 +387,11 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
     const prevSame = prev?.sets[sets.length] || prev?.sets[prev.sets.length - 1];
     let template = last || prevSame || {};
     const g = goal[sets.length];
-    if (g) {
+    if (isCardio) {
+      // Conditie: neem het vorige blok over (of de duur uit de vorm)
+      const base = last || prevSame || {};
+      template = { reps: !last && target?.cardio ? target.cardio.minutes : base.reps ?? null, km: last ? base.km ?? null : null, level: base.level ?? null };
+    } else if (g) {
       // Volgens de vorm: doel-reps met het gewicht dat bij de load (xRM) hoort
       template = { reps: g.amrap ? null : g.reps ?? null, weight: kgForSet(g) ?? template.weight ?? null };
     } else if (target?.total) {
@@ -390,7 +405,8 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
       exerciseId: exId,
       idx: sets.length,
       reps: template.reps ?? null,
-      weight: template.weight ?? null,
+      weight: isCardio ? null : template.weight ?? null,
+      ...(isCardio ? { km: template.km ?? null, level: template.level ?? null } : {}),
       createdAt: new Date().toISOString(),
     };
     await db.put('sets', s);
@@ -398,7 +414,7 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
     sessionSets.push(s);
     const tr = addRow(s);
     onChange();
-    const input = tr.querySelector(template.weight != null ? 'td:nth-child(3) input' : 'input');
+    const input = tr.querySelector(isCardio ? (template.reps != null ? 'td:nth-child(3) input' : 'input') : template.weight != null ? 'td:nth-child(3) input' : 'input');
     input?.focus();
   };
 
@@ -413,7 +429,12 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
   let targetLine = null;
   let updateTotal = () => {};
   const no1RM = isTime ? null : h('div', { class: 'muted' }, 'Nog geen 1RM bekend voor deze oefening: kies zelf een gewicht, de volgende keer rekent de app het uit.');
-  if (target?.total) {
+  if (isCardio && target?.cardio) {
+    targetLine = h('div', { class: 'small target-line' },
+      h('div', {}, h('span', { class: 'strong' }, `${target.label}: `), `${target.cardio.blocks.join(' · ')} (${target.cardio.minutes} min)`),
+      h('div', { class: 'muted' }, 'Log het als één blok: totale tijd, afstand en je rustige niveau.'),
+    );
+  } else if (target?.total) {
     const kg = suggestFor(target.load);
     const progress = h('span', { class: 'strong' });
     updateTotal = () => {
@@ -446,6 +467,12 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
     const filled = sets.filter((x) => x.reps);
     if (!filled.length) {
       summary.textContent = 'Nog geen sets';
+      return;
+    }
+    if (isCardio) {
+      const min = filled.reduce((n, x) => n + (Number(x.reps) || 0), 0);
+      const km = filled.reduce((n, x) => n + (Number(x.km) || 0), 0);
+      summary.textContent = `${fmt(min)} min${km ? ` · ${fmt(km)} km` : ''}`;
       return;
     }
     const b = isTime ? null : bestSet(filled);
@@ -484,11 +511,15 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
       : h('div', { class: 'muted small prev' }, groupLabel(e.group)),
     h('table', { class: 'sets' },
       h('thead', {}, h('tr', {},
-        h('th', {}, '#'), h('th', {}, 'kg'), h('th', {}, isTime ? 'sec' : 'reps'), h('th', {}, isTime ? '' : '1RM'), h('th'),
+        h('th', {}, '#'),
+        ...(isCardio
+          ? [h('th', {}, 'min'), h('th', {}, 'km'), h('th', {}, 'niveau')]
+          : [h('th', {}, 'kg'), h('th', {}, isTime ? 'sec' : 'reps'), h('th', {}, isTime ? '' : '1RM')]),
+        h('th'),
       )),
       tbody,
     ),
-    h('button', { class: 'btn small', onclick: addSet }, '+ Set'),
+    h('button', { class: 'btn small', onclick: addSet }, isCardio ? '+ Blok' : '+ Set'),
     ),
   );
   return card;
@@ -571,8 +602,9 @@ function openCustomExercise(name, onCreated, existing) {
   const groupSel = h('select', {}, MUSCLE_GROUPS.map((g) => h('option', { value: g.id, selected: existing?.group === g.id }, g.label)));
   const eqSel = h('select', {}, Object.entries(EQUIPMENT).map(([id, l]) => h('option', { value: id, selected: existing?.equipment === id }, l)));
   const metricSel = h('select', {},
-    h('option', { value: 'reps', selected: existing?.metric !== 'time' }, 'Herhalingen'),
+    h('option', { value: 'reps', selected: !['time', 'cardio'].includes(existing?.metric) }, 'Herhalingen'),
     h('option', { value: 'time', selected: existing?.metric === 'time' }, 'Tijd (seconden)'),
+    h('option', { value: 'cardio', selected: existing?.metric === 'cardio' }, 'Conditie (minuten, km, niveau)'),
   );
   const close = () => overlay.remove();
   const form = h('form', {
@@ -657,7 +689,8 @@ async function viewExercises() {
 async function viewExercise(id) {
   const e = ex(id);
   setTitle('Oefening');
-  const isTime = e.metric === 'time';
+  const isCardio = e.metric === 'cardio';
+  const isTime = e.metric === 'time' || isCardio;
   const sets = await db.getByIndex('sets', 'exerciseId', id);
   const sessions = new Map((await db.getAll('sessions')).map((s) => [s.id, s]));
   const bySession = new Map();
@@ -672,7 +705,14 @@ async function viewExercise(id) {
   const maxWeight = sets.reduce((m, s) => Math.max(m, Number(s.weight) || 0), 0);
   const maxReps = sets.reduce((m, s) => Math.max(m, Number(s.reps) || 0), 0);
 
-  const stats = isTime
+  const sumBy = (list, f) => list.reduce((n, x) => n + (Number(x[f]) || 0), 0);
+  const stats = isCardio
+    ? [
+        ['Totaal', `${fmt(sumBy(sets, 'reps'))} min`],
+        ['Afstand', sumBy(sets, 'km') ? `${fmt(sumBy(sets, 'km'))} km` : '–'],
+        ['Trainingen', history.length],
+      ]
+    : isTime
     ? [['Langste', maxReps ? `${fmt(maxReps)} s` : '–'], ['Trainingen', history.length]]
     : [
         ['Geschatte 1RM', best ? `${fmt(best.e1rm)} kg` : '–'],
@@ -780,7 +820,20 @@ async function viewMore() {
     },
   });
 
+  const profile = (await db.get('meta', 'profile')) || { key: 'profile', userId: db.USER_ID, name: '' };
+  const nameIn = h('input', {
+    type: 'text',
+    value: profile.name || '',
+    placeholder: 'Je voornaam',
+    autocomplete: 'given-name',
+    oninput: (e) => { profile.name = e.target.value.trim().slice(0, 40); db.put('meta', profile); },
+  });
+
   return h('div', { class: 'stack' },
+    h('div', { class: 'card stack tight' },
+      h('h2', { class: 'flush' }, 'Profiel'),
+      h('label', {}, h('span', { class: 'muted small' }, 'Naam (voor de groet op het voorblad)'), nameIn),
+    ),
     h('div', { class: 'card stack' },
       h('h2', { class: 'flush' }, 'Gegevens'),
       h('p', { class: 'small' }, `${counts.sessions} trainingen, ${counts.sets} sets, ${counts.exercises} eigen oefeningen.`),

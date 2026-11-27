@@ -32,6 +32,9 @@ export function fmtDate(iso, opts = { weekday: 'short', day: 'numeric', month: '
 }
 
 export function setLabel(s, ex) {
+  if (ex?.metric === 'cardio') {
+    return [`${fmt(s.reps)} min`, s.km ? `${fmt(s.km)} km` : '', s.level ? `niveau ${fmt(s.level)}` : ''].filter(Boolean).join(' · ');
+  }
   if (ex?.metric === 'time') return `${fmt(s.reps)} s${s.weight ? ` @ ${fmt(s.weight)} kg` : ''}`;
   return s.weight ? `${fmt(s.reps)} × ${fmt(s.weight)} kg` : `${fmt(s.reps)} reps`;
 }

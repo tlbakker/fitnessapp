@@ -94,7 +94,7 @@ test('planStatus: gepland telt pas als gedaan met gelogde sets', async () => {
   assert.equal(planStatus({ ...plan, sessionId: null, templateId: 't2' }, sessions, counts, '2026-12-05').status, 'missed');
 });
 
-import { FORMS, CUSTOM, setLabel, normalizeItem, buildTarget, readTarget, itemLabel, schemeLabel, packWorkout, encodeWorkout, decodeWorkout } from '../js/schemes.js';
+import { FORMS, CUSTOM, setLabel, formFits, normalizeItem, buildTarget, readTarget, itemLabel, schemeLabel, packWorkout, encodeWorkout, decodeWorkout } from '../js/schemes.js';
 
 test('vormen: oude workout-items blijven werken', () => {
   assert.deepEqual(normalizeItem({ exerciseId: 'a', sets: 3, reps: 10 }), { exerciseId: 'a', form: CUSTOM, reps: [10, 10, 10] });
@@ -163,4 +163,41 @@ test('standaardworkouts: geldige oefeningen, unieke ids, bestaande vorm', () => 
     assert.ok(FORMS.some((f) => f.id === t.form), `${t.id}: vorm ${t.form}`);
     for (const i of t.items) assert.ok(ids.has(i.exerciseId), `${t.id}: ${i.exerciseId}`);
   }
+});
+
+test('conditie: vormen en prestatie', async () => {
+  const { performance } = await import('../js/calc.js');
+  const cardio = BUILTIN_EXERCISES.filter((e) => e.metric === 'cardio');
+  assert.ok(cardio.length >= 5);
+  assert.ok(cardio.every((e) => MUSCLE_GROUPS.some((g) => g.id === e.group)));
+  // Krachtvorm geldt niet voor cardio en andersom
+  assert.equal(buildTarget({ exerciseId: 'tg-bike' }, 'low-high', { cardio: true }), null);
+  assert.equal(buildTarget({ exerciseId: 'bench-press' }, 'intervals', { cardio: false }), null);
+  assert.equal(buildTarget({ exerciseId: 'tg-bike', form: 'intervals' }, 'low-high', { cardio: true }).cardio.minutes, 28);
+  assert.equal(formFits('custom', true), false);
+  assert.equal(formFits('intervals', null), true);
+  assert.match(itemLabel({ exerciseId: 'tg-bike' }, 'intervals', true), /Intervallen \(28 min\)/);
+  // Delen houdt de cardiovorm per oefening vast
+  const pack = decodeWorkout(encodeWorkout(packWorkout({ name: 'Mix', form: 'low-high', items: [{ exerciseId: 'tg-bike', form: 'intervals' }] })));
+  assert.deepEqual(pack.items[0], { exerciseId: 'tg-bike', form: 'intervals' });
+  // Prestatie: gemiddelde snelheid, of minuten zonder afstand
+  assert.deepEqual(performance([{ reps: 30, km: 6 }], 'cardio'), { value: 12, unit: 'km/u', kind: 'speed' });
+  assert.equal(performance([{ reps: 20 }, { reps: 10 }], 'cardio').value, 30);
+});
+
+test('groet: naam, dagdeel en geplande training', async () => {
+  const { greeting, dayPart } = await import('../js/greeting.js');
+  assert.equal(dayPart(8), 'Goedemorgen');
+  assert.equal(dayPart(14), 'Goedemiddag');
+  assert.equal(dayPart(20), 'Goedenavond');
+  assert.equal(greeting({ name: 'Tim', hour: 8 }).title, 'Goedemorgen, Tim!');
+  assert.equal(greeting({ hour: 20 }).title, 'Goedenavond!');
+  for (let d = 1; d <= 28; d++) {
+    const date = `2026-12-${String(d).padStart(2, '0')}`;
+    assert.match(greeting({ date, planned: ['Push'] }).line, /Push/);
+    assert.match(greeting({ date, done: ['Benen'] }).line, /Benen/);
+  }
+  // Zelfde dag = zelfde zin
+  assert.equal(greeting({ date: '2026-12-01', planned: ['Push'] }).line, greeting({ date: '2026-12-01', planned: ['Push'] }).line);
+  assert.match(greeting({ planned: ['Push', 'Conditie'] }).line, /Push en Conditie/);
 });

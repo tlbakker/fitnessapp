@@ -91,6 +91,17 @@ export const FORMS = [
     description: 'Drie sets van 10, en als afsluiter één lichte set (je 20RM) met zo veel mogelijk reps.',
     build: () => ({ sets: [...sets(10, 10, 10).sets, { reps: null, load: 20, amrap: true }] }),
   },
+  // Conditie: geldt alleen voor cardio-oefeningen (en krachtvormen alleen voor kracht).
+  {
+    id: 'intervals',
+    name: 'Intervallen',
+    cardio: true,
+    description: 'Voor conditieapparaten: 5 min inlopen, 6 × (1 min hard, 2 min rustig), 5 min uitlopen. Hard is zo’n 3–4 niveaus boven rustig.',
+    build: () => ({
+      sets: [],
+      cardio: { minutes: 28, blocks: ['5 min inlopen (rustig)', '6 × 1 min hard + 2 min rustig', '5 min uitlopen'] },
+    }),
+  },
 ];
 
 /** Hoe een set in een schema staat: "10", of "max" bij zo veel mogelijk reps. */
@@ -106,9 +117,24 @@ export function formById(id) {
   return FORMS.find((f) => f.id === id) || null;
 }
 
+/**
+ * Past deze vorm bij de oefening? Krachtvormen en eigen reps bij kracht, cardiovormen bij
+ * conditie. cardio = null: soort onbekend, elke geldige vorm telt.
+ */
+export function formFits(id, cardio = null) {
+  if (id === CUSTOM) return cardio !== true;
+  const f = formById(id);
+  if (!f) return false;
+  return cardio == null || !!f.cardio === cardio;
+}
+
 /** Zet een workout-item (ook oude formaten) om naar { exerciseId, form, reps }. */
-export function normalizeItem(item, workoutForm = null) {
+export function normalizeItem(item, workoutForm = null, cardio = null) {
   const exerciseId = item.exerciseId;
+  if (cardio === true) {
+    const form = [item.form, workoutForm].find((f) => f && formFits(f, true));
+    return { exerciseId, form: form || null, reps: [] };
+  }
   if (Array.isArray(item.reps) && item.reps.length && (!item.form || item.form === CUSTOM)) {
     return { exerciseId, form: CUSTOM, reps: item.reps.map(Number).filter((r) => r > 0) };
   }
@@ -118,17 +144,17 @@ export function normalizeItem(item, workoutForm = null) {
     const r = Number(item.reps) || 0;
     return { exerciseId, form: CUSTOM, reps: r ? Array(n).fill(r) : [] };
   }
-  const form = item.form && (item.form === CUSTOM || formById(item.form)) ? item.form : workoutForm;
+  const form = [item.form, workoutForm].find((f) => f && formFits(f, cardio));
   return { exerciseId, form: form || null, reps: [] };
 }
 
 /**
  * Concreet doel voor één training. Bij willekeurige vormen wordt hier geloot, zodat het
  * doel in de training vastligt.
- * Resultaat: { form, label, sets: [{ reps, load }], total?, load? }
+ * Resultaat: { form, label, sets: [{ reps, load }], total?, load?, cardio? }
  */
-export function buildTarget(item, workoutForm = null, rng = Math.random) {
-  const it = normalizeItem(item, workoutForm);
+export function buildTarget(item, workoutForm = null, { rng = Math.random, cardio = null } = {}) {
+  const it = normalizeItem(item, workoutForm, cardio);
   if (it.form === CUSTOM) {
     return { form: CUSTOM, label: schemeLabel(it.reps), sets: it.reps.map((r) => ({ reps: r, load: r })) };
   }
@@ -155,13 +181,14 @@ export function schemeLabel(reps) {
 }
 
 /** Wat er bij een workout-oefening als doel staat, voor in lijsten. */
-export function itemLabel(item, workoutForm = null) {
-  const it = normalizeItem(item, workoutForm);
+export function itemLabel(item, workoutForm = null, cardio = null) {
+  const it = normalizeItem(item, workoutForm, cardio);
   if (it.form === CUSTOM) return schemeLabel(it.reps);
   const f = formById(it.form);
   if (!f) return '';
   if (f.random) return f.name;
   const t = f.build();
+  if (t.cardio) return `${f.name} (${t.cardio.minutes} min)`;
   if (t.total) return `${f.name} (${t.total} reps totaal, ${t.load}RM)`;
   return `${f.name} (${schemeLabel(t.sets.map(setLabel))})`;
 }
@@ -232,6 +259,6 @@ export function decodeWorkout(input) {
       }),
     custom: (Array.isArray(data.custom) ? data.custom : [])
       .filter((e) => typeof e.id === 'string' && e.id.startsWith('custom-') && typeof e.name === 'string')
-      .map((e) => ({ id: e.id, name: e.name.slice(0, 80), group: String(e.group || ''), equipment: String(e.equipment || ''), metric: e.metric === 'time' ? 'time' : 'reps' })),
+      .map((e) => ({ id: e.id, name: e.name.slice(0, 80), group: String(e.group || ''), equipment: String(e.equipment || ''), metric: ['time', 'cardio'].includes(e.metric) ? e.metric : 'reps' })),
   };
 }

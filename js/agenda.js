@@ -42,13 +42,13 @@ async function loadData() {
   return { sessions, sets, plans, setCountBySession };
 }
 
+/** Alle plannen van vandaag met hun status (ook al gedane). */
 export async function plannedToday() {
   const { sessions, plans, setCountBySession } = await loadData();
   const today = todayISO();
   return plans
     .filter((p) => p.date === today)
-    .map((p) => ({ plan: p, ...planStatus(p, sessions, setCountBySession, today) }))
-    .filter((p) => p.status !== 'done');
+    .map((p) => ({ plan: p, ...planStatus(p, sessions, setCountBySession, today) }));
 }
 
 export async function viewAgenda(ctx) {
