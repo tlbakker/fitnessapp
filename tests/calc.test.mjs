@@ -77,3 +77,19 @@ test('weightForReps is de omgekeerde Epley', () => {
   assert.equal(weightForReps(0, 10), 0);
   assert.deepEqual(REP_TARGETS, [6, 8, 10, 12, 15, 20, 25]);
 });
+
+test('planStatus: gepland telt pas als gedaan met gelogde sets', async () => {
+  globalThis.indexedDB ??= {};
+  const { planStatus } = await import('../js/agenda.js');
+  const sessions = [{ id: 's1', date: '2026-12-01', templateId: 't1' }];
+  const counts = new Map();
+  const plan = { id: 'p1', date: '2026-12-01', templateId: 't1', sessionId: 's1' };
+  assert.equal(planStatus(plan, sessions, counts, '2026-12-01').status, 'planned');
+  assert.equal(planStatus(plan, sessions, counts, '2026-12-02').status, 'missed');
+  counts.set('s1', 3);
+  assert.equal(planStatus(plan, sessions, counts, '2026-12-02').status, 'done');
+  // Zonder koppeling, maar wel dezelfde workout op die dag gelogd
+  assert.equal(planStatus({ ...plan, sessionId: null }, sessions, counts, '2026-12-05').status, 'done');
+  // Andere workout op die dag telt niet
+  assert.equal(planStatus({ ...plan, sessionId: null, templateId: 't2' }, sessions, counts, '2026-12-05').status, 'missed');
+});

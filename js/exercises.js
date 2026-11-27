@@ -175,4 +175,3 @@ export const BASELINE = {
 <p>Herhaal de nulmeting na 8 tot 12 weken om je vooruitgang te zien.</p>`,
 };
 
-export const TEMPLATES = [BASELINE];

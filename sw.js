@@ -1,6 +1,6 @@
 // Service worker: maakt de app offline bruikbaar. Verhoog VERSION bij elke release,
 // dan halen telefoons de nieuwe bestanden op.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = `fitness-${VERSION}`;
 const FILES = [
   './',
@@ -13,6 +13,8 @@ const FILES = [
   './js/ui.js',
   './js/chart.js',
   './js/progress.js',
+  './js/workouts.js',
+  './js/agenda.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

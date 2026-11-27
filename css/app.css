@@ -210,3 +210,38 @@ table.data a { text-decoration: underline; text-decoration-color: var(--line); }
 .tabbar a { font-size: 0.68rem; }
 table.data.reps th, table.data.reps td { text-align: center; padding: 6px 2px; }
 table.data.reps { margin: 8px 0; }
+
+/* Links die eruitzien als knop */
+a.btn { display: block; text-align: center; }
+a.btn.small { display: inline-block; }
+.cap::first-letter { text-transform: uppercase; }
+
+/* Workouts */
+.workout-item .target { gap: 8px; align-items: flex-end; margin-top: 6px; }
+.workout-item .target .muted:not(.small) { padding-bottom: 10px; }
+.target-line { margin: 2px 0 2px; }
+.picker-item.chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.sheet.short { height: auto; max-height: 92dvh; }
+.planned-today { border-color: var(--accent); }
+
+/* Agenda */
+.cal-head { margin-bottom: 6px; }
+.cal-head .icon { font-size: 1.4rem; }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.cal .dow { padding: 2px 0 6px; }
+.cal .day {
+  appearance: none; border: 0; background: transparent; color: var(--text); font: inherit;
+  border-radius: 10px; padding: 6px 0 4px; min-height: 44px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.cal .day.today .num { color: var(--accent); font-weight: 700; }
+.cal .day.selected { background: var(--input); box-shadow: inset 0 0 0 1px var(--line); }
+.marks { display: flex; gap: 3px; height: 8px; }
+.mark { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
+.mark.done { background: var(--accent); }
+.mark.planned { box-shadow: inset 0 0 0 2px var(--accent); }
+.mark.missed { box-shadow: inset 0 0 0 2px var(--muted); }
+.legend { display: flex; gap: 14px; justify-content: center; margin-top: 10px; }
+.pill.status-planned { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.pill.status-missed { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1.5px var(--muted); }
+.pill.status-done { background: var(--accent); color: var(--accent-text); }
