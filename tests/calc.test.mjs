@@ -94,13 +94,13 @@ test('planStatus: gepland telt pas als gedaan met gelogde sets', async () => {
   assert.equal(planStatus({ ...plan, sessionId: null, templateId: 't2' }, sessions, counts, '2026-12-05').status, 'missed');
 });
 
-import { FORMS, CUSTOM, normalizeItem, buildTarget, readTarget, itemLabel, schemeLabel, packWorkout, encodeWorkout, decodeWorkout } from '../js/schemes.js';
+import { FORMS, CUSTOM, setLabel, normalizeItem, buildTarget, readTarget, itemLabel, schemeLabel, packWorkout, encodeWorkout, decodeWorkout } from '../js/schemes.js';
 
 test('vormen: oude workout-items blijven werken', () => {
   assert.deepEqual(normalizeItem({ exerciseId: 'a', sets: 3, reps: 10 }), { exerciseId: 'a', form: CUSTOM, reps: [10, 10, 10] });
   assert.deepEqual(normalizeItem({ exerciseId: 'a', reps: [6, 10, 15] }).reps, [6, 10, 15]);
-  assert.equal(normalizeItem({ exerciseId: 'a' }, 'pyramid').form, 'pyramid');
-  assert.equal(normalizeItem({ exerciseId: 'a', form: 'low-high' }, 'pyramid').form, 'low-high');
+  assert.equal(normalizeItem({ exerciseId: 'a' }, 'pyramid-3').form, 'pyramid-3');
+  assert.equal(normalizeItem({ exerciseId: 'a', form: 'low-high' }, 'pyramid-3').form, 'low-high');
   // Oude trainingen met { reps: [] } als doel
   assert.deepEqual(readTarget({ reps: [8, 8] }).sets, [{ reps: 8, load: 8 }, { reps: 8, load: 8 }]);
   assert.equal(readTarget(undefined), null);
@@ -111,7 +111,7 @@ test('vormen: oude workout-items blijven werken', () => {
 test('vormen: doelen per training', () => {
   const lh = buildTarget({ exerciseId: 'a' }, 'low-high');
   assert.deepEqual(lh.sets.map((s) => s.reps), [6, 10, 15]);
-  const tot = buildTarget({ exerciseId: 'a' }, 'total-30');
+  const tot = buildTarget({ exerciseId: 'a' }, 'rest-pause-30');
   assert.equal(tot.total, 30);
   assert.equal(tot.load, 10);
   // Willekeurig: één laag, één midden, één hoog, in elke volgorde
@@ -121,12 +121,18 @@ test('vormen: doelen per training', () => {
   }
   assert.equal(buildTarget({ exerciseId: 'a' }, null), null);
   assert.deepEqual(buildTarget({ exerciseId: 'a', form: CUSTOM, reps: [5, 5] }).sets.map((s) => s.reps), [5, 5]);
-  assert.match(itemLabel({ exerciseId: 'a' }, 'total-30'), /30 reps totaal/);
+  assert.match(itemLabel({ exerciseId: 'a' }, 'rest-pause-30'), /30 reps totaal/);
   for (const f of FORMS) assert.ok(f.build(Math.random), f.id);
+  assert.match(itemLabel({ exerciseId: 'a' }, 'drop-set'), /10 · max · max/);
+  assert.match(itemLabel({ exerciseId: 'a' }, 'amrap-finisher'), /10 · 10 · 10 · max/);
+  assert.deepEqual(buildTarget({ exerciseId: 'a' }, 'pyramid-5').sets.map((s) => s.reps), [8, 12, 15, 12, 8]);
+  assert.equal(setLabel({ reps: 10, amrap: true }), '10+');
+  // Geen vorm onder de 4 reps (Tims ondergrens)
+  for (const f of FORMS) for (const s of f.build().sets) assert.ok(s.reps == null || s.reps >= 4, f.id);
 });
 
 test('delen: inpakken en uitpakken via link-code en JSON', () => {
-  const t = { name: 'Push Ä', form: 'pyramid', items: [{ exerciseId: 'bench-press' }, { exerciseId: 'custom-x', form: CUSTOM, reps: [12, 12] }, { exerciseId: 'db-fly', form: 'total-30' }] };
+  const t = { name: 'Push Ä', form: 'pyramid-3', items: [{ exerciseId: 'bench-press' }, { exerciseId: 'custom-x', form: CUSTOM, reps: [12, 12] }, { exerciseId: 'db-fly', form: 'rest-pause-30' }] };
   const custom = [{ id: 'custom-x', name: 'Mijn oefening', group: 'chest', equipment: 'cable', metric: 'reps', userId: 'me' }, { id: 'custom-y', name: 'Ongebruikt' }];
   const pack = packWorkout(t, custom);
   assert.equal(pack.custom.length, 1);
@@ -135,10 +141,10 @@ test('delen: inpakken en uitpakken via link-code en JSON', () => {
   assert.match(code, /^[A-Za-z0-9_-]+$/);
   const back = decodeWorkout(code);
   assert.equal(back.name, 'Push Ä');
-  assert.equal(back.form, 'pyramid');
+  assert.equal(back.form, 'pyramid-3');
   assert.deepEqual(back.items[0], { exerciseId: 'bench-press' });
   assert.deepEqual(back.items[1], { exerciseId: 'custom-x', form: CUSTOM, reps: [12, 12] });
-  assert.deepEqual(back.items[2], { exerciseId: 'db-fly', form: 'total-30' });
+  assert.deepEqual(back.items[2], { exerciseId: 'db-fly', form: 'rest-pause-30' });
   // Oude links (v1, alleen reps) blijven werken
   const v1 = decodeWorkout(JSON.stringify({ app: 'fitnessapp', type: 'workout', v: 1, name: 'Oud', items: [{ e: 'bench-press', r: [6, 10, 15] }] }));
   assert.deepEqual(v1.items[0].reps, [6, 10, 15]);

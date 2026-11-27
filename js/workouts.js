@@ -149,7 +149,7 @@ export async function viewWorkoutEdit(id, ctx) {
         item.form = v || null;
         if (v === CUSTOM && !item.reps.length) {
           const base = formById(t.form)?.build();
-          item.reps = base?.sets?.length ? base.sets.map((x) => x.reps) : [10, 10, 10];
+          item.reps = base?.sets?.length ? base.sets.map((x) => x.reps || 10) : [10, 10, 10];
         }
         draw();
       },

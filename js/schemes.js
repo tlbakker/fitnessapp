@@ -11,34 +11,54 @@
 const sets = (...reps) => ({ sets: reps.map((r) => ({ reps: r, load: r })) });
 const pick = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
 
+// Een set kan ook "zo veel mogelijk reps" zijn (amrap) en een gewicht als fractie van het
+// gewicht van zijn load hebben (pct, voor drop sets).
 export const FORMS = [
   {
     id: 'low-high',
     name: 'Laag → hoog',
-    description: 'Zwaar begin, daarna lichter en meer reps.',
+    description: 'Zwaar begin met weinig reps, daarna lichter met meer reps.',
     build: () => sets(6, 10, 15),
   },
   {
-    id: 'pyramid',
-    name: 'Piramide',
-    description: 'Elke set zwaarder met minder reps.',
-    build: () => sets(12, 10, 8, 6),
+    id: 'high-low',
+    name: 'Hoog → laag',
+    description: 'Licht begin met veel reps, daarna steeds zwaarder.',
+    build: () => sets(15, 10, 6),
   },
   {
-    id: 'reverse-pyramid',
-    name: 'Omgekeerde piramide',
-    description: 'Zwaarste set eerst, daarna lichter met meer reps.',
-    build: () => sets(6, 8, 10, 12),
+    id: 'pyramid-3',
+    name: 'Piramide 3',
+    description: 'Zwaar, licht, zwaar: de reps lopen op en weer af.',
+    build: () => sets(8, 15, 8),
   },
   {
-    id: 'total-30',
-    name: '30 reps totaal',
-    description: 'Gewicht van je 10RM; verdeel 30 reps over zoveel sets als nodig, met korte pauzes.',
+    id: 'pyramid-5',
+    name: 'Piramide 5',
+    description: 'Vijf sets: de reps lopen op tot 15 en weer af.',
+    build: () => sets(8, 12, 15, 12, 8),
+  },
+  {
+    id: 'reverse-pyramid-3',
+    name: 'Piramide omgekeerd 3',
+    description: 'Licht, zwaar, licht: de reps lopen af en weer op.',
+    build: () => sets(15, 8, 15),
+  },
+  {
+    id: 'reverse-pyramid-5',
+    name: 'Piramide omgekeerd 5',
+    description: 'Vijf sets: de reps lopen af tot 8 en weer op.',
+    build: () => sets(15, 12, 8, 12, 15),
+  },
+  {
+    id: 'rest-pause-30',
+    name: 'Rest-pause',
+    description: 'Gewicht van je 10RM; haal 30 reps in zoveel sets als nodig, met korte pauzes.',
     build: () => ({ sets: [], total: 30, load: 10 }),
   },
   {
     id: 'random-3',
-    name: 'Willekeurig laag/midden/hoog',
+    name: 'Random 3 sets',
     description: 'Elke training andere reps: één set laag (4–6), midden (8–12) en hoog (15–20), in willekeurige volgorde.',
     random: true,
     build: (rng = Math.random) => {
@@ -50,11 +70,34 @@ export const FORMS = [
       return sets(...s);
     },
   },
-  { id: 'straight-3x10', name: '3 × 10', description: 'Drie gelijke sets.', build: () => sets(10, 10, 10) },
-  { id: 'straight-3x12', name: '3 × 12', description: 'Drie gelijke sets, iets lichter.', build: () => sets(12, 12, 12) },
-  { id: 'strength-4x6', name: '4 × 6', description: 'Krachtgericht, zwaarder gewicht.', build: () => sets(6, 6, 6, 6) },
-  { id: 'endurance-2x20', name: '2 × 20', description: 'Uithouding, licht gewicht.', build: () => sets(20, 20) },
+  { id: 'straight-3', name: 'Rechte sets 3', description: 'Drie gelijke sets.', build: () => sets(10, 10, 10) },
+  { id: 'straight-4', name: 'Rechte sets 4', description: 'Vier gelijke sets.', build: () => sets(8, 8, 8, 8) },
+  { id: 'straight-5', name: 'Rechte sets 5', description: 'Vijf gelijke sets, zwaarder gewicht.', build: () => sets(6, 6, 6, 6, 6) },
+  {
+    id: 'drop-set',
+    name: 'Drop set',
+    description: 'Eén set op je 10RM, dan direct 20% lichter tot je niet meer kunt, en nog een keer 20% lichter.',
+    build: () => ({
+      sets: [
+        { reps: 10, load: 10 },
+        { reps: null, load: 10, pct: 0.8, amrap: true },
+        { reps: null, load: 10, pct: 0.64, amrap: true },
+      ],
+    }),
+  },
+  {
+    id: 'amrap-finisher',
+    name: 'AMRAP-finisher',
+    description: 'Drie sets van 10, en als afsluiter één lichte set (je 20RM) met zo veel mogelijk reps.',
+    build: () => ({ sets: [...sets(10, 10, 10).sets, { reps: null, load: 20, amrap: true }] }),
+  },
 ];
+
+/** Hoe een set in een schema staat: "10", of "max" bij zo veel mogelijk reps. */
+export function setLabel(set) {
+  if (set.amrap) return set.reps ? `${set.reps}+` : 'max';
+  return set.reps;
+}
 
 /** Vorm voor eigen reps per set (geen preset). */
 export const CUSTOM = 'custom';
@@ -119,8 +162,8 @@ export function itemLabel(item, workoutForm = null) {
   if (!f) return '';
   if (f.random) return f.name;
   const t = f.build();
-  if (t.total) return `${t.total} reps totaal (${t.load}RM)`;
-  return `${f.name} (${schemeLabel(t.sets.map((s) => s.reps))})`;
+  if (t.total) return `${f.name} (${t.total} reps totaal, ${t.load}RM)`;
+  return `${f.name} (${schemeLabel(t.sets.map(setLabel))})`;
 }
 
 // ---------- Delen ----------

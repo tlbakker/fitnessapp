@@ -4,7 +4,7 @@ import * as db from './db.js';
 import { h, fill, todayISO, fmtDate, setLabel, sortSessions, toast } from './ui.js';
 import { viewProgress } from './progress.js';
 import { viewWorkouts, viewWorkoutEdit, viewImport, workoutRow, allTemplates, getTemplate, templateItems, saveSessionAsWorkout } from './workouts.js';
-import { buildTarget, readTarget, schemeLabel } from './schemes.js';
+import { buildTarget, readTarget, schemeLabel, setLabel as goalSetLabel } from './schemes.js';
 import { viewAgenda, plannedToday } from './agenda.js';
 
 const $app = document.getElementById('app');
@@ -368,7 +368,8 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
   const prevBest = prev ? bestSet(prev.sets) : null;
   const target = readTarget(session.targets?.[exId]);
   const goal = target?.sets ?? [];
-  const suggestFor = (load) => (!isTime && prevBest?.e1rm && load ? roundTo(weightForReps(prevBest.e1rm, load), 0.5) : null);
+  const suggestFor = (load, pct = 1) => (!isTime && prevBest?.e1rm && load ? roundTo(weightForReps(prevBest.e1rm, load) * pct, 0.5) : null);
+  const kgForSet = (g) => suggestFor(g.load ?? g.reps, g.pct ?? 1);
 
   const addSet = async () => {
     const last = sets[sets.length - 1];
@@ -377,7 +378,7 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
     const g = goal[sets.length];
     if (g) {
       // Volgens de vorm: doel-reps met het gewicht dat bij de load (xRM) hoort
-      template = { reps: g.reps ?? null, weight: suggestFor(g.load ?? g.reps) ?? template.weight ?? null };
+      template = { reps: g.amrap ? null : g.reps ?? null, weight: kgForSet(g) ?? template.weight ?? null };
     } else if (target?.total) {
       // Totaal-reps: steeds hetzelfde gewicht, reps vul je zelf in
       template = { reps: null, weight: suggestFor(target.load) ?? last?.weight ?? template.weight ?? null };
@@ -426,12 +427,12 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
       kg ? h('div', { class: 'muted' }, `Gewicht: ≈ ${fmt(kg)} kg (je ${target.load}RM). Voeg sets toe tot je op ${target.total} zit.`) : no1RM,
     );
   } else if (goal.length) {
-    const reps = goal.map((g) => g.reps);
-    const kg = goal.map((g) => suggestFor(g.load ?? g.reps));
+    const reps = goal.map(goalSetLabel);
+    const kg = goal.map(kgForSet);
     targetLine = h('div', { class: 'small target-line' },
       h('div', {},
         target.label && target.form !== 'custom' ? h('span', { class: 'strong' }, `${target.label}: `) : h('span', { class: 'strong' }, 'Doel: '),
-        `${schemeLabel(reps)} reps`),
+        `${schemeLabel(reps)} reps`, goal.some((g) => g.amrap) ? ' (max = zo veel mogelijk)' : ''),
       kg.some((x) => x)
         ? h('div', { class: 'muted' }, `Gewicht per set: ${kg.map((x) => (x ? fmt(x) : '?')).join(' · ')} kg (max. voor die reps)`)
         : no1RM,
