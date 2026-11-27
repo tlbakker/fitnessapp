@@ -13,7 +13,7 @@ export const BODY_METRICS = [
   { key: 'visceral', label: 'Visceraal vet', unit: '', step: '0.5' },
 ];
 
-const UNIT_LABEL = { kg: 'kg (geschatte 1RM)', reps: 'herhalingen', s: 'seconden' };
+const UNIT_LABEL = { kg: 'kg (geschatte 1RM)', reps: 'herhalingen', s: 'seconden', 'km/u': 'km/u (gemiddelde snelheid)', min: 'minuten' };
 
 let selectedExercise = null;
 

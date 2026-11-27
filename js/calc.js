@@ -43,11 +43,17 @@ export function fmt(n) {
  * Eén prestatiegetal voor een oefening in een training, zodat trainingen te vergelijken zijn:
  * - met gewicht: hoogste geschatte 1RM (kg)
  * - zonder gewicht: meeste herhalingen in één set (of langste tijd in seconden)
- * metric is 'reps' of 'time' (zie exercises.js). Geeft null als er niets bruikbaars is.
+ * - conditie: gemiddelde snelheid (km/u) als er afstand is, anders totale minuten
+ * metric is 'reps', 'time' of 'cardio' (zie exercises.js). Geeft null als er niets bruikbaars is.
  */
 export function performance(sets, metric = 'reps') {
   const valid = sets.filter((s) => Number(s.reps) > 0);
   if (!valid.length) return null;
+  if (metric === 'cardio') {
+    const min = valid.reduce((n, s) => n + Number(s.reps), 0);
+    const km = valid.reduce((n, s) => n + (Number(s.km) || 0), 0);
+    return km ? { value: (km / min) * 60, unit: 'km/u', kind: 'speed' } : { value: min, unit: 'min', kind: 'minutes' };
+  }
   if (metric !== 'time' && valid.some((s) => Number(s.weight) > 0)) {
     const b = bestSet(valid);
     return { value: b.e1rm, unit: 'kg', kind: 'e1rm' };

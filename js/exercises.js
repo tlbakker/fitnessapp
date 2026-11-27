@@ -16,6 +16,7 @@ export const MUSCLE_GROUPS = [
   { id: 'calves', label: 'Kuiten' },
   { id: 'abs', label: 'Buikspieren' },
   { id: 'lowerback', label: 'Onderrug' },
+  { id: 'cardio', label: 'Conditie' },
 ];
 
 export const EQUIPMENT = {
@@ -29,7 +30,7 @@ export const EQUIPMENT = {
 };
 
 // [id, naam, spiergroep, materiaal, secundaire spiergroepen, extra]
-// extra.metric: 'reps' (standaard) of 'time' (seconden), extra.aka: zoekwoorden
+// extra.metric: 'reps' (standaard), 'time' (seconden) of 'cardio' (minuten, km, niveau), extra.aka: zoekwoorden
 const RAW = [
   // Borst
   ['bench-press', 'Bench Press', 'chest', 'barbell', ['triceps', 'shoulders'], { aka: 'bankdrukken' }],
@@ -126,6 +127,15 @@ const RAW = [
   ['tg-adductor', 'Adductor (Technogym)', 'hips', 'technogym', []],
   ['tg-abdominal-crunch', 'Abdominal Crunch (Technogym)', 'abs', 'technogym', []],
   ['tg-rotary-torso', 'Rotary Torso (Technogym)', 'abs', 'technogym', [], { aka: 'obliques' }],
+
+  // Conditie: gelogd in minuten, km en niveau/weerstand (geen gewicht of 1RM)
+  ['tg-treadmill', 'Loopband (Technogym Run)', 'cardio', 'technogym', [], { metric: 'cardio', aka: 'treadmill hardlopen wandelen run' }],
+  ['tg-crosstrainer', 'Crosstrainer (Technogym Synchro)', 'cardio', 'technogym', [], { metric: 'cardio', aka: 'ellips elliptical crosstrainer synchro cross' }],
+  ['tg-bike', 'Hometrainer (Technogym Bike)', 'cardio', 'technogym', [], { metric: 'cardio', aka: 'fiets bike fietsen' }],
+  ['tg-recline', 'Ligfiets (Technogym Recline)', 'cardio', 'technogym', [], { metric: 'cardio', aka: 'fiets recline bike' }],
+  ['tg-rower', 'Roeiergometer (Technogym Skillrow)', 'cardio', 'technogym', ['back'], { metric: 'cardio', aka: 'roeien rower roeimachine ergometer skillrow' }],
+  ['tg-upper-body-ergometer', 'Armergometer (Technogym Top)', 'cardio', 'technogym', ['shoulders'], { metric: 'cardio', aka: 'ergometer arm handbike top' }],
+  ['tg-stepper', 'Stepper / trappenloper (Technogym Climb)', 'cardio', 'technogym', ['glutes'], { metric: 'cardio', aka: 'stairs traplopen climb step' }],
 ];
 
 export const BUILTIN_EXERCISES = RAW.map(([id, name, group, equipment, secondary, extra = {}]) => ({
@@ -216,6 +226,13 @@ export const BUILTIN_WORKOUTS = [
     description: 'Quadriceps, hamstrings, bilspieren en kuiten.',
     form: 'straight-3',
     items: w(['back-squat', 'romanian-deadlift', 'tg-leg-press', 'tg-leg-curl', 'hip-thrust', 'standing-calf-raise']),
+  },
+  {
+    id: 'tpl-cardio-intervals',
+    name: 'Conditie · intervallen',
+    description: 'Intervallen op de crosstrainer (28 min). Kopieer hem en kies een ander apparaat als je wilt.',
+    form: 'intervals',
+    items: w(['tg-crosstrainer']),
   },
   {
     id: 'tpl-endurance',

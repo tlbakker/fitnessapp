@@ -13,6 +13,7 @@ server en er gaat niets naar GitHub.
 - Geschiedenis per training en per oefening
 - Geschatte 1RM volgens Epley: gewicht × (1 + reps ÷ 30)
 - Vaste workouts: kies eerst een trainingsvorm (laag → hoog, hoog → laag, piramide, rest-pause, random 3 sets, rechte sets, drop set, AMRAP-finisher), daarna de oefeningen. Per oefening kun je afwijken. Het gewicht per set rekent de app uit je eigen 1RM
+- Conditieapparaten (loopband, crosstrainer, hometrainer, ligfiets, roeiergometer, armergometer, stepper): log je minuten, km en niveau; voortgang als gemiddelde snelheid. Vorm "Intervallen" voor cardio
 - Standaardworkouts in de app (`BUILTIN_WORKOUTS` in `js/exercises.js`), te kopiëren en aan te passen
 - Workouts delen via link of bestand (alleen oefeningen + schema, nooit gewichten of trainingen)
 - Agenda: maandoverzicht, workouts plannen (ook wekelijks herhalen); gepland telt pas als gedaan als hij gelogd is
