@@ -1,6 +1,6 @@
 // Service worker: maakt de app offline bruikbaar. Verhoog VERSION bij elke release,
 // dan halen telefoons de nieuwe bestanden op.
-const VERSION = 'v6';
+const VERSION = 'v7';
 const CACHE = `fitness-${VERSION}`;
 const FILES = [
   './',
@@ -17,13 +17,21 @@ const FILES = [
   './js/agenda.js',
   './js/schemes.js',
   './js/greeting.js',
+  './js/estimate.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' slaat de HTTP-cache van de browser over. Anders kan een nieuwe versie
+  // half oude bestanden bevatten (GitHub Pages laat ze 10 minuten cachen), en dan passen
+  // de modules niet meer op elkaar.
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' }))))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -34,20 +42,25 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Eerst uit de cache (snel, ook bij slecht bereik in de sportschool), en op de
-// achtergrond de nieuwste versie ophalen voor de volgende keer.
+// Eerst het netwerk, zodat je altijd de nieuwste versie hebt. Duurt dat langer dan 3
+// seconden of is er geen bereik (sportschool), dan de versie uit de cache.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(e.request, { ignoreSearch: true });
-      const network = fetch(e.request)
-        .then((res) => {
-          if (res.ok) cache.put(e.request, res.clone());
-          return res;
-        })
-        .catch(() => cached || cache.match('./index.html'));
-      return cached || network;
+      const network = fetch(e.request, { cache: 'no-cache' }).then((res) => {
+        if (res.ok) cache.put(e.request, res.clone());
+        return res;
+      });
+      const cached = () => cache.match(e.request, { ignoreSearch: true });
+      const timeout = new Promise((resolve) => setTimeout(resolve, 3000));
+      try {
+        const res = await Promise.race([network, timeout.then(cached)]);
+        if (res) return res;
+        return await network;
+      } catch {
+        return (await cached()) || (await cache.match('./index.html')) || Response.error();
+      }
     }),
   );
 });

@@ -271,3 +271,7 @@ a.btn.small { display: inline-block; }
 .form-preview { color: var(--accent); margin-top: auto; }
 .target-line .done { color: var(--accent); }
 @media (max-width: 360px) { .form-list { grid-template-columns: 1fr; } }
+
+/* Keuzeknoppen naast elkaar (bijv. man/vrouw) */
+.seg { display: flex; gap: 8px; margin-top: 4px; }
+.seg .btn { flex: 1; }

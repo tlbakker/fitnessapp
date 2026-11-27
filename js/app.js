@@ -7,6 +7,7 @@ import { viewWorkouts, viewWorkoutEdit, viewImport, workoutRow, allTemplates, ge
 import { buildTarget, readTarget, schemeLabel, setLabel as goalSetLabel } from './schemes.js';
 import { viewAgenda, plannedToday } from './agenda.js';
 import { greeting } from './greeting.js';
+import { estimate1RM, startWeight, ageFrom, EXPERIENCE, STRENGTH_RATIOS } from './estimate.js';
 
 const $app = document.getElementById('app');
 const $title = document.getElementById('title');
@@ -199,6 +200,7 @@ async function viewSession(id) {
   const allSets = await db.getAll('sets');
   const allSessions = await db.getAll('sessions');
   const sessionSets = allSets.filter((s) => s.sessionId === id);
+  const body = await bodyProfile();
 
   const save = () => db.put('sessions', session);
 
@@ -220,7 +222,7 @@ async function viewSession(id) {
 
   const list = h('div', { class: 'stack' });
   for (const exId of session.exerciseIds) {
-    list.append(exerciseCard(session, exId, sessionSets, allSets, allSessions, save, refreshSummary));
+    list.append(exerciseCard(session, exId, sessionSets, allSets, allSessions, save, refreshSummary, body));
   }
 
   const addBtn = h('button', {
@@ -311,7 +313,15 @@ function previousPerformance(session, exId, allSets, allSessions) {
   return null;
 }
 
-function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSession, onSessionChange) {
+/** Profiel plus je laatst gemeten lichaamsgewicht, voor de schatting van startgewichten. */
+async function bodyProfile() {
+  const profile = (await db.get('meta', 'profile')) || {};
+  const measured = (await db.getAll('measurements')).filter((m) => m.weight > 0).sort((a, b) => a.date.localeCompare(b.date)).pop();
+  const bodyweight = measured?.weight ?? profile.weight ?? null;
+  return { profile, bodyweight, complete: !!(profile.sex && profile.birthYear && bodyweight) };
+}
+
+function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSession, onSessionChange, body = { profile: {}, complete: false }) {
   const e = ex(exId);
   const onChange = () => {
     onSessionChange();
@@ -376,10 +386,16 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
   sets.forEach(addRow);
 
   // Doel per set (uit een workout) en het gewicht dat daarbij hoort volgens je laatste geschatte 1RM.
+  let targetLine = null;
   const prevBest = prev ? bestSet(prev.sets) : null;
   const target = readTarget(session.targets?.[exId]);
   const goal = target?.sets ?? [];
-  const suggestFor = (load, pct = 1) => (!isTime && prevBest?.e1rm && load ? roundTo(weightForReps(prevBest.e1rm, load) * pct, 0.5) : null);
+  // Nog nooit gedaan? Dan een voorzichtige schatting uit je profiel (geslacht, leeftijd, gewicht).
+  const guessed = !isTime && !prevBest && body.complete ? estimate1RM(exId, body.profile, body.bodyweight) : null;
+  const base1RM = prevBest?.e1rm || guessed;
+  const step = guessed && !prevBest ? 2.5 : 0.5;
+  const suggestFor = (load, pct = 1) => (!isTime && base1RM && load ? roundTo(weightForReps(base1RM, load) * pct, step) : null);
+  const startKg = guessed ? startWeight(exId, body.profile, body.bodyweight) : null;
   const kgForSet = (g) => suggestFor(g.load ?? g.reps, g.pct ?? 1);
 
   const addSet = async () => {
@@ -397,6 +413,9 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
     } else if (target?.total) {
       // Totaal-reps: steeds hetzelfde gewicht, reps vul je zelf in
       template = { reps: null, weight: suggestFor(target.load) ?? last?.weight ?? template.weight ?? null };
+    } else if (!last && !prevSame && startKg) {
+      // Eerste keer (nulmeting): begin met het geschatte testgewicht
+      template = { reps: null, weight: startKg };
     }
     const s = {
       id: db.newId(),
@@ -426,9 +445,17 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
     render();
   };
 
-  let targetLine = null;
-  let updateTotal = () => {};
+    let updateTotal = () => {};
   const no1RM = isTime ? null : h('div', { class: 'muted' }, 'Nog geen 1RM bekend voor deze oefening: kies zelf een gewicht, de volgende keer rekent de app het uit.');
+  const guessNote = guessed ? ' Geschat uit je profiel, want je hebt deze oefening nog niet gelogd.' : '';
+  if (!goal.length && !target?.total && !isTime && !prevBest && STRENGTH_RATIOS[exId]) {
+    targetLine = startKg
+      ? h('div', { class: 'small target-line' },
+          h('div', {}, h('span', { class: 'strong' }, 'Startgewicht: '), `≈ ${fmt(startKg)} kg voor 12 tot 15 reps`),
+          h('div', { class: 'muted' }, `Een voorzichtige schatting uit je profiel. Gaat het te makkelijk (meer dan 18 reps)? Rust en pak zwaarder.`))
+      : h('div', { class: 'small target-line muted' },
+          'Vul onder ', h('a', { href: '#/meer' }, 'Meer → Profiel'), ' je geslacht, geboortejaar en gewicht in, dan stelt de app een startgewicht voor.');
+  }
   if (isCardio && target?.cardio) {
     targetLine = h('div', { class: 'small target-line' },
       h('div', {}, h('span', { class: 'strong' }, `${target.label}: `), `${target.cardio.blocks.join(' · ')} (${target.cardio.minutes} min)`),
@@ -445,7 +472,7 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
     updateTotal();
     targetLine = h('div', { class: 'small target-line' },
       h('div', {}, h('span', { class: 'strong' }, `${target.label}: `), `${target.total} reps totaal · `, progress),
-      kg ? h('div', { class: 'muted' }, `Gewicht: ≈ ${fmt(kg)} kg (je ${target.load}RM). Voeg sets toe tot je op ${target.total} zit.`) : no1RM,
+      kg ? h('div', { class: 'muted' }, `Gewicht: ≈ ${fmt(kg)} kg (je ${target.load}RM). Voeg sets toe tot je op ${target.total} zit.${guessNote}`) : no1RM,
     );
   } else if (goal.length) {
     const reps = goal.map(goalSetLabel);
@@ -455,7 +482,7 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
         target.label && target.form !== 'custom' ? h('span', { class: 'strong' }, `${target.label}: `) : h('span', { class: 'strong' }, 'Doel: '),
         `${schemeLabel(reps)} reps`, goal.some((g) => g.amrap) ? ' (max = zo veel mogelijk)' : ''),
       kg.some((x) => x)
-        ? h('div', { class: 'muted' }, `Gewicht per set: ${kg.map((x) => (x ? fmt(x) : '?')).join(' · ')} kg (max. voor die reps)`)
+        ? h('div', { class: 'muted' }, `Gewicht per set: ${kg.map((x) => (x ? fmt(x) : '?')).join(' · ')} kg (max. voor die reps).${guessNote}`)
         : no1RM,
     );
   }
@@ -829,10 +856,66 @@ async function viewMore() {
     oninput: (e) => { profile.name = e.target.value.trim().slice(0, 40); db.put('meta', profile); },
   });
 
+  // Geslacht, leeftijd, gewicht en ervaring: daarmee schat de app startgewichten voor de nulmeting.
+  const measured = (await db.getAll('measurements')).filter((m) => m.weight > 0).sort((a, b) => a.date.localeCompare(b.date)).pop();
+  const startList = h('div', { class: 'small' });
+  const ageNote = h('span');
+  const saveProfile = () => { db.put('meta', profile); drawStart(); };
+  function drawStart() {
+    const age = ageFrom(profile.birthYear);
+    ageNote.textContent = age != null && age >= 0 && age < 110 ? ` (je bent ${age})` : '';
+    const bw = measured?.weight ?? profile.weight;
+    if (!(profile.sex && profile.birthYear && bw)) {
+      fill(startList, h('p', { class: 'muted flush' }, 'Vul geslacht, geboortejaar en gewicht in, dan zie je hier de startgewichten voor de nulmeting.'));
+      return;
+    }
+    fill(startList,
+      h('p', { class: 'muted flush' }, `Startgewichten voor de nulmeting (±15 reps), op basis van ${fmt(bw)} kg lichaamsgewicht. Je ziet ze ook tijdens de training, en na je eerste sets rekent de app met je echte resultaten.`),
+      h('table', { class: 'data' }, h('tbody', {},
+        BASELINE.exerciseIds.filter((id) => STRENGTH_RATIOS[id]).map((id) =>
+          h('tr', {}, h('td', {}, ex(id).name.replace(' (Technogym)', '')), h('td', { class: 'num' }, `${fmt(startWeight(id, profile, bw))} kg`))),
+      )),
+    );
+  }
+  const choice = (name, options, key) =>
+    h('div', { class: 'seg', role: 'radiogroup', 'aria-label': name },
+      options.map(([value, label]) => {
+        const b = h('button', {
+          type: 'button',
+          class: 'btn small' + (profile[key] === value ? ' primary' : ''),
+          'aria-pressed': String(profile[key] === value),
+          onclick: () => {
+            profile[key] = value;
+            b.parentNode.querySelectorAll('button').forEach((x) => { x.classList.toggle('primary', x === b); x.setAttribute('aria-pressed', String(x === b)); });
+            saveProfile();
+          },
+        }, label);
+        return b;
+      }));
+  const yearIn = h('input', {
+    type: 'number', inputmode: 'numeric', min: 1920, max: new Date().getFullYear(), placeholder: 'Bijv. 1991', value: profile.birthYear ?? '',
+    oninput: (e) => { const y = Number(e.target.value); profile.birthYear = y > 1900 ? y : null; saveProfile(); },
+  });
+  const weightIn = measured
+    ? h('p', { class: 'small flush' }, h('span', { class: 'muted' }, 'Lichaamsgewicht: '), `${fmt(measured.weight)} kg`, h('span', { class: 'muted' }, ` (laatste meting, ${fmtDate(measured.date)})`))
+    : h('label', {}, h('span', { class: 'muted small' }, 'Lichaamsgewicht (kg)'),
+        h('input', {
+          type: 'number', inputmode: 'decimal', min: 30, max: 300, step: 0.1, placeholder: 'Bijv. 85', value: profile.weight ?? '',
+          oninput: (e) => { const w = Number(e.target.value); profile.weight = w > 30 ? w : null; saveProfile(); },
+        }));
+  const expSelect = h('select', { onchange: (e) => { profile.experience = e.target.value; saveProfile(); } },
+    EXPERIENCE.map((x) => h('option', { value: x.id, selected: (profile.experience ?? 'returning') === x.id }, x.name)));
+  drawStart();
+
   return h('div', { class: 'stack' },
     h('div', { class: 'card stack tight' },
       h('h2', { class: 'flush' }, 'Profiel'),
       h('label', {}, h('span', { class: 'muted small' }, 'Naam (voor de groet op het voorblad)'), nameIn),
+      h('div', {}, h('span', { class: 'muted small' }, 'Geslacht'), choice('Geslacht', [['m', 'Man'], ['v', 'Vrouw']], 'sex')),
+      h('label', {}, h('span', { class: 'muted small' }, 'Geboortejaar', ageNote), yearIn),
+      weightIn,
+      h('label', {}, h('span', { class: 'muted small' }, 'Ervaring'), expSelect),
+      startList,
     ),
     h('div', { class: 'card stack' },
       h('h2', { class: 'flush' }, 'Gegevens'),
@@ -848,8 +931,24 @@ async function viewMore() {
       h('h2', { class: 'flush' }, 'Geschatte 1RM'),
       h('p', { class: 'small' }, 'De app schat je 1RM met de formule van Epley: gewicht × (1 + reps ÷ 30). Hoe dichter bij je max je test, hoe nauwkeuriger. Bij sets boven de ±12 herhalingen is het een ruwe schatting; vergelijk dan vooral metingen die op dezelfde manier zijn gedaan.'),
     ),
-    h('p', { class: 'muted small center' }, 'Fitness · v2'),
+    h('button', { class: 'btn ghost', onclick: forceUpdate }, 'App bijwerken naar de nieuwste versie'),
+    h('p', { class: 'muted small center' }, `Fitness · ${APP_VERSION}`),
   );
+}
+
+// Moet gelijk zijn aan VERSION in sw.js.
+const APP_VERSION = 'v7';
+let reloading = false;
+
+/** Noodknop: gooi de app-cache weg en laad alles opnieuw. Je gegevens blijven staan. */
+async function forceUpdate() {
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations()) ?? [];
+    await Promise.all(regs.map((r) => r.unregister()));
+    const keys = (await caches?.keys()) ?? [];
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  } catch { /* geen service worker: gewoon herladen */ }
+  location.reload();
 }
 
 // ---------- start ----------
@@ -864,12 +963,12 @@ window.addEventListener('hashchange', render);
     // Nieuwe versie: de service worker haalt die op de achtergrond op. Zodra hij actief is,
     // bieden we aan om te vernieuwen. Je gegevens blijven gewoon staan.
     const hadController = !!navigator.serviceWorker.controller;
+    // Een nieuwe versie is actief: direct herladen, zodat je nooit een mengsel van oude en
+    // nieuwe schermen ziet. Je gegevens staan los daarvan in IndexedDB en blijven staan.
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!hadController) return;
-      const bar = h('div', { class: 'toast update' },
-        'Nieuwe versie van de app ',
-        h('button', { class: 'btn small primary', onclick: () => location.reload() }, 'Vernieuwen'));
-      document.body.append(bar);
+      if (!hadController || reloading) return;
+      reloading = true;
+      location.reload();
     });
     navigator.serviceWorker.register('./sw.js').then((reg) => reg.update()).catch(() => {});
   }
