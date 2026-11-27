@@ -93,3 +93,45 @@ test('planStatus: gepland telt pas als gedaan met gelogde sets', async () => {
   // Andere workout op die dag telt niet
   assert.equal(planStatus({ ...plan, sessionId: null, templateId: 't2' }, sessions, counts, '2026-12-05').status, 'missed');
 });
+
+import { normalizeItem, targetReps, schemeLabel, packWorkout, encodeWorkout, decodeWorkout } from '../js/schemes.js';
+
+test('schema: oude en nieuwe workout-items', () => {
+  assert.deepEqual(normalizeItem({ exerciseId: 'a', sets: 3, reps: 10 }).reps, [10, 10, 10]);
+  assert.deepEqual(normalizeItem({ exerciseId: 'a', reps: [6, 10, 15] }).reps, [6, 10, 15]);
+  assert.deepEqual(targetReps({ sets: 2, reps: 8 }), [8, 8]);
+  assert.deepEqual(targetReps(undefined), []);
+  assert.equal(schemeLabel([10, 10, 10]), '3 × 10');
+  assert.equal(schemeLabel([6, 10, 15]), '6 · 10 · 15');
+});
+
+test('delen: inpakken en uitpakken via link-code en JSON', () => {
+  const t = { name: 'Push Ä', items: [{ exerciseId: 'bench-press', reps: [6, 10, 15] }, { exerciseId: 'custom-x', sets: 2, reps: 12 }] };
+  const custom = [{ id: 'custom-x', name: 'Mijn oefening', group: 'chest', equipment: 'cable', metric: 'reps', userId: 'me' }, { id: 'custom-y', name: 'Ongebruikt' }];
+  const pack = packWorkout(t, custom);
+  assert.equal(pack.custom.length, 1);
+  assert.equal(pack.custom[0].userId, undefined);
+  const code = encodeWorkout(pack);
+  assert.match(code, /^[A-Za-z0-9_-]+$/);
+  const back = decodeWorkout(code);
+  assert.equal(back.name, 'Push Ä');
+  assert.deepEqual(back.items[1], { exerciseId: 'custom-x', reps: [12, 12] });
+  assert.deepEqual(decodeWorkout(JSON.stringify(pack)).items[0].reps, [6, 10, 15]);
+  assert.throws(() => decodeWorkout('rommel'), /geen geldige workout/);
+  assert.throws(() => decodeWorkout('{"app":"x"}'), /geen geldige workout/);
+});
+
+import { BUILTIN_WORKOUTS } from '../js/exercises.js';
+
+test('standaardworkouts: geldige oefeningen, unieke ids, reps per set', () => {
+  const ids = new Set(BUILTIN_EXERCISES.map((e) => e.id));
+  const seen = new Set();
+  for (const t of BUILTIN_WORKOUTS) {
+    assert.ok(t.id.startsWith('tpl-') && !seen.has(t.id), t.id);
+    seen.add(t.id);
+    for (const i of t.items) {
+      assert.ok(ids.has(i.exerciseId), `${t.id}: ${i.exerciseId}`);
+      assert.ok(i.reps.length > 0 && i.reps.every((r) => r > 0));
+    }
+  }
+});

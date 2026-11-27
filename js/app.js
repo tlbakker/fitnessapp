@@ -3,7 +3,8 @@ import { epley1RM, bestSet, volume, fmt, weightForReps, roundTo, REP_TARGETS } f
 import * as db from './db.js';
 import { h, fill, todayISO, fmtDate, setLabel, sortSessions, toast } from './ui.js';
 import { viewProgress } from './progress.js';
-import { viewWorkouts, viewWorkoutEdit, workoutRow, allTemplates, getTemplate, templateItems, saveSessionAsWorkout, targetLabel } from './workouts.js';
+import { viewWorkouts, viewWorkoutEdit, viewImport, workoutRow, allTemplates, getTemplate, templateItems, saveSessionAsWorkout } from './workouts.js';
+import { targetReps, schemeLabel } from './schemes.js';
 import { viewAgenda, plannedToday } from './agenda.js';
 
 const $app = document.getElementById('app');
@@ -48,7 +49,7 @@ async function recentExerciseIds(limit = 12) {
 // ---------- router ----------
 
 /** Gedeelde functies voor de schermen in andere modules. */
-const ctx = () => ({ ex, allExercises, setTitle, render, openPicker, startSession, sessionRow });
+const ctx = () => ({ ex, allExercises, setTitle, render, openPicker, startSession, sessionRow, reloadExercises: loadExercises });
 
 const routes = [
   [/^#?\/?$/, viewTraining],
@@ -56,6 +57,7 @@ const routes = [
   [/^#\/sessie\/(.+)$/, (id) => viewSession(id)],
   [/^#\/(agenda|geschiedenis)$/, () => viewAgenda(ctx())],
   [/^#\/workouts$/, () => viewWorkouts(ctx())],
+  [/^#\/import\/(.+)$/, (code) => viewImport(code, ctx())],
   [/^#\/workout\/(.+)$/, (id) => viewWorkoutEdit(id, ctx())],
   [/^#\/voortgang$/, () => viewProgress({ ex, setTitle, render })],
   [/^#\/oefeningen$/, viewExercises],
@@ -99,7 +101,7 @@ async function activeSession() {
 async function startSession(template, { planId } = {}) {
   const items = templateItems(template);
   const targets = {};
-  for (const it of items) if (it.sets || it.reps) targets[it.exerciseId] = { sets: it.sets ?? null, reps: it.reps ?? null };
+  for (const it of items) if (it.reps.length) targets[it.exerciseId] = { reps: [...it.reps] };
   const s = {
     id: db.newId(),
     userId: db.USER_ID,
@@ -128,12 +130,13 @@ async function viewTraining() {
   const sessions = sortSessions(await db.getAll('sessions')).slice(0, 3);
   const sets = await db.getAll('sets');
   const today = await plannedToday();
-  const templates = (await allTemplates()).filter((t) => !t.builtin);
+  const everything = await allTemplates();
+  const templates = everything.filter((t) => !t.builtin);
   return h(
     'div',
     { class: 'stack' },
     today.map(({ plan, session }) => {
-      const t = templates.find((x) => x.id === plan.templateId);
+      const t = everything.find((x) => x.id === plan.templateId);
       if (!t) return null;
       return h('div', { class: 'card stack tight planned-today' },
         h('div', { class: 'muted small' }, 'Gepland voor vandaag'),
@@ -148,7 +151,7 @@ async function viewTraining() {
     h('div', { class: 'row' }, h('h2', { class: 'grow' }, 'Workouts'), h('a', { class: 'btn small ghost', href: '#/workouts' }, 'Beheren')),
     templates.length
       ? templates.map((t) => workoutRow(t, ctx(), { compact: true }))
-      : h('a', { class: 'card link small muted', href: '#/workout/nieuw' }, 'Nog geen vaste workouts. Tik hier om er een te maken, of sla een training op als workout.'),
+      : h('a', { class: 'card link small muted', href: '#/workouts' }, 'Nog geen eigen workouts. Tik hier voor de standaardworkouts in de app, of om er zelf een te maken.'),
     h('div', { class: 'card stack tight' },
       h('div', { class: 'strong' }, 'Nulmeting'),
       h('p', { class: 'small muted flush' }, `${BASELINE.exerciseIds.length} basisoefeningen, één per spiergroep. Hiermee bepaal je je startniveau en geschatte 1RM; het overzicht staat daarna onder Voortgang.`),
@@ -357,10 +360,20 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
   };
   sets.forEach(addRow);
 
+  // Doel per set (uit een workout) en het gewicht dat daarbij hoort volgens je laatste geschatte 1RM.
+  const prevBest = prev ? bestSet(prev.sets) : null;
+  const goal = targetReps(session.targets?.[exId]);
+  const suggestFor = (reps) => (!isTime && prevBest?.e1rm && reps ? roundTo(weightForReps(prevBest.e1rm, reps), 0.5) : null);
+
   const addSet = async () => {
     const last = sets[sets.length - 1];
     const prevSame = prev?.sets[sets.length] || prev?.sets[prev.sets.length - 1];
-    const template = last || prevSame || {};
+    let template = last || prevSame || {};
+    const goalReps = goal[sets.length];
+    if (goalReps) {
+      // Volgens het schema: doel-reps met het berekende gewicht (of anders je laatste gewicht)
+      template = { reps: goalReps, weight: suggestFor(goalReps) ?? template.weight ?? null };
+    }
     const s = {
       id: db.newId(),
       userId: db.USER_ID,
@@ -388,16 +401,14 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
     render();
   };
 
-  const prevBest = prev ? bestSet(prev.sets) : null;
-  const target = session.targets?.[exId];
   let targetLine = null;
-  if (target) {
-    // Voorgesteld gewicht: omgekeerde Epley op de laatst geschatte 1RM
-    const lastE1 = prevBest?.e1rm;
-    const suggest = !isTime && lastE1 && target.reps ? roundTo(weightForReps(lastE1, target.reps), 0.5) : null;
+  if (goal.length) {
+    const kg = goal.map(suggestFor);
     targetLine = h('div', { class: 'small target-line' },
-      h('span', { class: 'strong' }, `Doel: ${targetLabel(target)}`),
-      suggest ? ` · max. ≈ ${fmt(suggest)} kg` : '',
+      h('div', {}, h('span', { class: 'strong' }, `Doel: ${schemeLabel(goal)} reps`)),
+      kg.some((x) => x)
+        ? h('div', { class: 'muted' }, `Gewicht per set: ${kg.map((x) => (x ? fmt(x) : '?')).join(' · ')} kg (max. voor die reps)`)
+        : isTime ? null : h('div', { class: 'muted' }, 'Nog geen 1RM bekend voor deze oefening: kies zelf een gewicht, de volgende keer rekent de app het uit.'),
     );
   }
 
@@ -769,6 +780,16 @@ window.addEventListener('hashchange', render);
   await loadExercises();
   await render();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    // Nieuwe versie: de service worker haalt die op de achtergrond op. Zodra hij actief is,
+    // bieden we aan om te vernieuwen. Je gegevens blijven gewoon staan.
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) return;
+      const bar = h('div', { class: 'toast update' },
+        'Nieuwe versie van de app ',
+        h('button', { class: 'btn small primary', onclick: () => location.reload() }, 'Vernieuwen'));
+      document.body.append(bar);
+    });
+    navigator.serviceWorker.register('./sw.js').then((reg) => reg.update()).catch(() => {});
   }
 })();
