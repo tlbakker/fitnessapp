@@ -6,12 +6,16 @@ server en er gaat niets naar GitHub.
 
 **Openen:** https://tlbakker.github.io/fitnessapp/
 
-## Wat kan het (stap 1)
+## Wat kan het
 
 - Training starten en sets loggen (kg × reps), met de waarden van vorige keer al ingevuld
 - 85 vooringeladen oefeningen per spiergroep, waaronder Technogym-apparaten, plus eigen oefeningen
 - Geschiedenis per training en per oefening
 - Geschatte 1RM volgens Epley: gewicht × (1 + reps ÷ 30)
+- Oefeningen binnen een training inklappen (gaat automatisch bij het toevoegen van een nieuwe)
+- Nulmeting: 12 basisoefeningen (één per spiergroep + uithouding) met uitleg, voor je startniveau
+- Lichaamsmetingen: gewicht, vet%, spiermassa, buikomtrek, visceraal vet
+- Voortgang: nulmeting vs. nu, grafiek per oefening, grafieken van je metingen
 - Back-up downloaden en terugzetten (JSON)
 
 ## Installeren op Android
@@ -29,7 +33,8 @@ npm test      # unit-tests (Node 22)
 
 - `js/exercises.js` – de oefeningenlijst. Ids nooit wijzigen, alleen toevoegen.
 - `js/db.js` – opslag. Stores voor vaste workouts (`templates`) en agenda (`plans`) staan al klaar voor stap 2.
-- `js/calc.js` – rekenfuncties (Epley, volume).
+- `js/calc.js` – rekenfuncties (Epley, volume, prestatie per training).
+- `js/progress.js` + `js/chart.js` – voortgangsscherm en SVG-grafieken.
 - `sw.js` – offline cache. Verhoog `VERSION` bij elke release.
 
 Bij elke push naar `main` draaien de tests en wordt de site gepubliceerd via GitHub Actions.

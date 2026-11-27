@@ -78,7 +78,8 @@ main { max-width: 640px; margin: 0 auto; padding: 14px 16px; }
 }
 .card.link:active { opacity: .7; }
 .card.hero { text-align: center; padding: 22px 14px; }
-.card.hero p { margin: 0 0 12px; text-transform: capitalize; }
+.card.hero p { margin: 0 0 12px; }
+.card.hero p::first-letter { text-transform: uppercase; }
 
 .pill {
   display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 99px;
@@ -152,3 +153,60 @@ td.e1rm { text-align: center; white-space: nowrap; }
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 99px; z-index: 30;
   font-size: 0.9rem; max-width: 90vw;
 }
+
+/* Inklapbare oefeningen */
+.card-head { gap: 4px; }
+.head-toggle {
+  appearance: none; border: 0; background: transparent; color: inherit; font: inherit;
+  text-align: left; padding: 4px 0; display: flex; align-items: flex-start; gap: 8px; cursor: pointer; min-width: 0;
+}
+.head-toggle .strong { display: block; }
+.chev { color: var(--muted); transition: transform .15s; display: inline-block; width: 16px; margin-top: 1px; }
+.exercise .summary { display: none; }
+.exercise.collapsed .summary { display: block; }
+.exercise.collapsed .card-body { display: none; }
+.exercise.collapsed .chev { transform: rotate(-90deg); }
+.exercise.collapsed { padding-top: 10px; padding-bottom: 10px; }
+.row.end { justify-content: flex-end; margin: -4px 0; }
+a.icon { display: inline-flex; align-items: center; justify-content: center; }
+
+/* Instructiekaart */
+details.info summary, details.card summary { cursor: pointer; }
+details.info ol { padding-left: 20px; margin: 8px 0; }
+details.info li { margin-bottom: 4px; }
+.flush { margin: 0; }
+
+/* Tabellen */
+table.data { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+table.data th { text-align: left; font-weight: 500; color: var(--muted); font-size: 0.75rem; padding: 4px; border-bottom: 1px solid var(--line); }
+table.data td { padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.data tr:last-child td { border-bottom: 0; }
+table.data .num { text-align: right; white-space: nowrap; }
+table.data a { text-decoration: underline; text-decoration-color: var(--line); }
+
+/* Grafiek */
+.chart { position: relative; margin: 8px 0 4px; touch-action: pan-y; }
+.chart-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font-size: 10px; }
+.chart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .dot { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
+.chart .dot.active { r: 6; }
+.chart .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-tip {
+  position: absolute; top: -6px; transform: translate(-50%, -100%); pointer-events: none;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+  font-size: 0.8rem; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,.15); z-index: 2;
+}
+.chart-tip[hidden] { display: none; }
+
+/* Formulieren */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sheet-scroll { overflow-y: auto; flex: 1; }
+.list-btn { appearance: none; text-align: left; font: inherit; color: inherit; width: 100%; cursor: pointer; }
+.list { margin-top: 10px; }
+
+/* 5 tabbladen */
+.tabbar a { font-size: 0.68rem; }
+table.data.reps th, table.data.reps td { text-align: center; padding: 6px 2px; }
+table.data.reps { margin: 8px 0; }

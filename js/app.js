@@ -1,55 +1,11 @@
-import { BUILTIN_EXERCISES, MUSCLE_GROUPS, EQUIPMENT, groupLabel } from './exercises.js';
-import { epley1RM, bestSet, volume, fmt } from './calc.js';
+import { BUILTIN_EXERCISES, MUSCLE_GROUPS, EQUIPMENT, groupLabel, BASELINE, TEMPLATES } from './exercises.js';
+import { epley1RM, bestSet, volume, fmt, weightForReps, roundTo, REP_TARGETS } from './calc.js';
 import * as db from './db.js';
+import { h, todayISO, fmtDate, setLabel, sortSessions, toast } from './ui.js';
+import { viewProgress } from './progress.js';
 
 const $app = document.getElementById('app');
 const $title = document.getElementById('title');
-
-// ---------- kleine helpers ----------
-
-function h(tag, props = {}, ...children) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(props || {})) {
-    if (v == null || v === false) continue;
-    if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
-    else if (k === 'class') el.className = v;
-    else if (k === 'html') el.innerHTML = v;
-    else if (k in el && typeof v !== 'string') el[k] = v;
-    else el.setAttribute(k, v === true ? '' : v);
-  }
-  for (const c of children.flat(Infinity)) {
-    if (c == null || c === false) continue;
-    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
-  }
-  return el;
-}
-
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
-
-function fmtDate(iso, opts = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) {
-  if (!iso) return '';
-  const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('nl-NL', opts);
-}
-
-function setLabel(s, ex) {
-  if (ex?.metric === 'time') return `${fmt(s.reps)} s${s.weight ? ` @ ${fmt(s.weight)} kg` : ''}`;
-  return s.weight ? `${fmt(s.reps)} × ${fmt(s.weight)} kg` : `${fmt(s.reps)} reps`;
-}
-
-function sortSessions(list) {
-  return list.sort((a, b) => (b.date + b.startedAt).localeCompare(a.date + a.startedAt));
-}
-
-function toast(msg) {
-  const t = h('div', { class: 'toast' }, msg);
-  document.body.append(t);
-  setTimeout(() => t.remove(), 2500);
-}
 
 // ---------- oefeningen ----------
 
@@ -94,6 +50,7 @@ const routes = [
   [/^#\/training$/, viewTraining],
   [/^#\/sessie\/(.+)$/, (id) => viewSession(id)],
   [/^#\/geschiedenis$/, viewHistory],
+  [/^#\/voortgang$/, () => viewProgress({ ex, setTitle, render })],
   [/^#\/oefeningen$/, viewExercises],
   [/^#\/oefening\/(.+)$/, (id) => viewExercise(decodeURIComponent(id))],
   [/^#\/meer$/, viewMore],
@@ -131,16 +88,16 @@ async function activeSession() {
   return sessions.find((s) => !s.finishedAt);
 }
 
-async function startSession() {
+async function startSession(template) {
   const s = {
     id: db.newId(),
     userId: db.USER_ID,
     date: todayISO(),
     startedAt: new Date().toISOString(),
     finishedAt: null,
-    exerciseIds: [],
+    exerciseIds: template?.exerciseIds ? [...template.exerciseIds] : [],
     note: '',
-    templateId: null,
+    templateId: template?.id ?? null,
   };
   await db.put('sessions', s);
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
@@ -158,7 +115,12 @@ async function viewTraining() {
     { class: 'stack' },
     h('div', { class: 'card hero' },
       h('p', { class: 'muted' }, fmtDate(todayISO(), { weekday: 'long', day: 'numeric', month: 'long' })),
-      h('button', { class: 'btn primary big', onclick: startSession }, 'Start training'),
+      h('button', { class: 'btn primary big', onclick: () => startSession() }, 'Start training'),
+    ),
+    h('div', { class: 'card stack tight' },
+      h('div', { class: 'strong' }, 'Nulmeting'),
+      h('p', { class: 'small muted flush' }, `${BASELINE.exerciseIds.length} basisoefeningen, één per spiergroep. Hiermee bepaal je je startniveau en geschatte 1RM; het overzicht staat daarna onder Voortgang.`),
+      h('button', { class: 'btn', onclick: () => startSession(BASELINE) }, 'Nulmeting starten'),
     ),
     sessions.length ? h('h2', {}, 'Laatste trainingen') : h('p', { class: 'muted center' }, 'Nog geen trainingen gelogd. Succes met je eerste!'),
     sessions.map((s) => sessionRow(s, sets)),
@@ -217,7 +179,11 @@ async function viewSession(id) {
     class: 'btn',
     onclick: () =>
       openPicker(async (exId) => {
+        // Klap oefeningen met sets in, zodat je direct bij de nieuwe bent.
+        const done = new Set(sessionSets.map((x) => x.exerciseId));
+        session.collapsed = [...new Set([...(session.collapsed || []), ...session.exerciseIds.filter((x) => done.has(x))])];
         if (!session.exerciseIds.includes(exId)) session.exerciseIds.push(exId);
+        session.collapsed = session.collapsed.filter((x) => x !== exId);
         await save();
         render();
       }),
@@ -245,11 +211,34 @@ async function viewSession(id) {
   }, 'Training verwijderen');
 
 
+  const allCollapsed = () => session.exerciseIds.length && session.exerciseIds.every((x) => (session.collapsed || []).includes(x));
+  const collapseAllBtn = h('button', {
+    class: 'btn small ghost',
+    onclick: async () => {
+      session.collapsed = allCollapsed() ? [] : [...session.exerciseIds];
+      await save();
+      list.querySelectorAll('.exercise').forEach((c) => {
+        c.classList.toggle('collapsed', session.collapsed.includes(c.dataset.ex));
+        c.updateSummary?.();
+      });
+      collapseAllBtn.textContent = allCollapsed() ? 'Alles uitklappen' : 'Alles inklappen';
+    },
+  }, allCollapsed() ? 'Alles uitklappen' : 'Alles inklappen');
+
+  const template = session.templateId ? TEMPLATES.find((t) => t.id === session.templateId) : null;
+
   return h('div', { class: 'stack' },
     h('div', { class: 'card row' },
       h('label', { class: 'grow' }, h('span', { class: 'muted small' }, 'Datum'), dateInput),
       h('div', { class: 'right small muted' }, vol),
     ),
+    template
+      ? h('details', { class: 'card info', open: !sessionSets.length },
+          h('summary', { class: 'strong' }, `${template.name}: zo pak je het aan`),
+          h('div', { class: 'small', html: template.instructions }),
+        )
+      : null,
+    session.exerciseIds.length > 1 ? h('div', { class: 'row end' }, collapseAllBtn) : null,
     session.exerciseIds.length ? null : h('p', { class: 'muted center' }, 'Voeg je eerste oefening toe.'),
     list,
     addBtn,
@@ -273,8 +262,12 @@ function previousPerformance(session, exId, allSets, allSessions) {
   return null;
 }
 
-function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSession, onChange) {
+function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSession, onSessionChange) {
   const e = ex(exId);
+  const onChange = () => {
+    onSessionChange();
+    updateSummary();
+  };
   const isTime = e.metric === 'time';
   const sets = sessionSets.filter((s) => s.exerciseId === exId).sort((a, b) => a.idx - b.idx);
   const prev = previousPerformance(session, exId, allSets, allSessions);
@@ -364,11 +357,41 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
 
   const prevBest = prev ? bestSet(prev.sets) : null;
 
-  return h('section', { class: 'card exercise' },
-    h('div', { class: 'row' },
-      h('a', { class: 'grow strong', href: `#/oefening/${encodeURIComponent(exId)}` }, e.name),
+  // Inklappen: de status wordt in de training bewaard, zodat hij blijft staan.
+  const summary = h('div', { class: 'muted small summary' });
+  const updateSummary = () => {
+    const filled = sets.filter((x) => x.reps);
+    if (!filled.length) {
+      summary.textContent = 'Nog geen sets';
+      return;
+    }
+    const b = isTime ? null : bestSet(filled);
+    const top = b ? b.set : filled.reduce((m, x) => (Number(x.reps) > Number(m.reps) ? x : m), filled[0]);
+    summary.textContent = `${filled.length} ${filled.length === 1 ? 'set' : 'sets'} · beste ${setLabel(top, e)}`;
+  };
+  updateSummary();
+  const card = h('section', { class: 'card exercise' + ((session.collapsed || []).includes(exId) ? ' collapsed' : ''), 'data-ex': exId });
+  card.updateSummary = updateSummary;
+  const toggle = async () => {
+    const isCollapsed = card.classList.toggle('collapsed');
+    const set = new Set(session.collapsed || []);
+    if (isCollapsed) set.add(exId);
+    else set.delete(exId);
+    session.collapsed = [...set];
+    updateSummary();
+    await saveSession();
+  };
+
+  card.append(
+    h('div', { class: 'row card-head' },
+      h('button', { class: 'head-toggle grow', 'aria-label': `${e.name} in- of uitklappen`, onclick: toggle },
+        h('span', { class: 'chev' }, '▾'),
+        h('span', { class: 'grow' }, h('span', { class: 'strong' }, e.name), summary),
+      ),
+      h('a', { class: 'icon', href: `#/oefening/${encodeURIComponent(exId)}`, 'aria-label': 'Geschiedenis van deze oefening' }, '📈'),
       h('button', { class: 'icon', 'aria-label': 'Oefening verwijderen', onclick: removeExercise }, '🗑'),
     ),
+    h('div', { class: 'card-body' },
     prev
       ? h('div', { class: 'muted small prev' },
           `Vorige keer (${fmtDate(prev.session.date, { day: 'numeric', month: 'short' })}): `,
@@ -382,7 +405,9 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
       tbody,
     ),
     h('button', { class: 'btn small', onclick: addSet }, '+ Set'),
+    ),
   );
+  return card;
 }
 
 // ---------- Oefening kiezen ----------
@@ -615,6 +640,7 @@ async function viewExercise(id) {
         }, 'Verwijderen'),
       ),
     ),
+    !isTime && history.length ? workingWeightsCard(history[0], bySession.get(history[0].id), e) : null,
     history.length ? h('h2', {}, 'Geschiedenis') : h('p', { class: 'muted center' }, 'Nog niet gelogd.'),
     history.map((s) => {
       const ss = bySession.get(s.id).sort((a, b) => a.idx - b.idx);
@@ -627,6 +653,25 @@ async function viewExercise(id) {
         h('div', { class: 'small' }, ss.map((x) => setLabel(x, e)).join(' · ')),
       );
     }),
+  );
+}
+
+/** Werkgewichten per aantal herhalingen, teruggerekend uit de geschatte 1RM van de laatste training. */
+function workingWeightsCard(session, sessionSets, e) {
+  const b = bestSet(sessionSets);
+  if (!b) return null;
+  return h('div', { class: 'card' },
+    h('div', { class: 'row' },
+      h('div', { class: 'grow strong' }, 'Werkgewicht per aantal reps'),
+      h('div', { class: 'muted small' }, `1RM ≈ ${fmt(b.e1rm)} kg`),
+    ),
+    h('table', { class: 'data reps' },
+      h('thead', {}, h('tr', {}, REP_TARGETS.map((r) => h('th', { class: 'num' }, `${r}×`)))),
+      h('tbody', {}, h('tr', {}, REP_TARGETS.map((r) => h('td', { class: 'num strong' }, fmt(roundTo(weightForReps(b.e1rm, r), 0.5)))))),
+    ),
+    h('p', { class: 'muted small flush' },
+      `kg, op basis van je beste set op ${fmtDate(session.date, { day: 'numeric', month: 'short' })} (${setLabel(b.set, e)}), Epley. `,
+      'Het gewicht waarmee je die reps nét haalt: kies voor werksets iets lichter als je 1 à 2 reps over wilt houden.'),
   );
 }
 
@@ -684,9 +729,9 @@ async function viewMore() {
     ),
     h('div', { class: 'card' },
       h('h2', { class: 'flush' }, 'Geschatte 1RM'),
-      h('p', { class: 'small' }, 'De app schat je 1RM met de formule van Epley: gewicht × (1 + reps ÷ 30). Bij sets boven de ±12 herhalingen wordt de schatting minder betrouwbaar.'),
+      h('p', { class: 'small' }, 'De app schat je 1RM met de formule van Epley: gewicht × (1 + reps ÷ 30). Hoe dichter bij je max je test, hoe nauwkeuriger. Bij sets boven de ±12 herhalingen is het een ruwe schatting; vergelijk dan vooral metingen die op dezelfde manier zijn gedaan.'),
     ),
-    h('p', { class: 'muted small center' }, 'Fitness · v1'),
+    h('p', { class: 'muted small center' }, 'Fitness · v2'),
   );
 }
 

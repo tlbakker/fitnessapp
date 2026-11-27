@@ -39,3 +39,41 @@ test('oefeningenlijst: unieke ids en geldige spiergroepen', () => {
   }
   assert.ok(BUILTIN_EXERCISES.length >= 50);
 });
+
+import { performance, pctChange } from '../js/calc.js';
+import { BASELINE } from '../js/exercises.js';
+
+test('performance: met gewicht geeft geschatte 1RM', () => {
+  const p = performance([{ weight: 100, reps: 5 }, { weight: 60, reps: 10 }]);
+  assert.equal(p.kind, 'e1rm');
+  assert.equal(Math.round(p.value * 10) / 10, 116.7);
+});
+
+test('performance: zonder gewicht geeft max. herhalingen of tijd', () => {
+  assert.deepEqual(performance([{ reps: 20 }, { reps: 25, weight: null }]), { value: 25, unit: 'reps', kind: 'reps' });
+  assert.equal(performance([{ reps: 60 }, { reps: 90 }], 'time').value, 90);
+  assert.equal(performance([{ reps: null }]), null);
+});
+
+test('pctChange', () => {
+  assert.equal(pctChange(100, 110), 10);
+  assert.equal(pctChange(0, 5), null);
+});
+
+test('nulmeting gebruikt bestaande oefeningen', () => {
+  const ids = new Set(BUILTIN_EXERCISES.map((e) => e.id));
+  for (const id of BASELINE.exerciseIds) assert.ok(ids.has(id), id);
+});
+
+import { weightForReps, REP_TARGETS } from '../js/calc.js';
+
+test('weightForReps is de omgekeerde Epley', () => {
+  const oneRM = epley1RM(60, 14);
+  assert.equal(Math.round(oneRM), 88);
+  assert.ok(Math.abs(weightForReps(oneRM, 14) - 60) < 1e-9);
+  assert.equal(Math.round(weightForReps(oneRM, 10)), 66);
+  assert.equal(Math.round(weightForReps(oneRM, 20)), 53);
+  assert.equal(weightForReps(100, 1), 100);
+  assert.equal(weightForReps(0, 10), 0);
+  assert.deepEqual(REP_TARGETS, [6, 8, 10, 12, 15, 20, 25]);
+});

@@ -38,3 +38,37 @@ export function fmt(n) {
   if (n == null || Number.isNaN(n)) return '';
   return Number(n).toLocaleString('nl-NL', { maximumFractionDigits: 1 });
 }
+
+/**
+ * Eén prestatiegetal voor een oefening in een training, zodat trainingen te vergelijken zijn:
+ * - met gewicht: hoogste geschatte 1RM (kg)
+ * - zonder gewicht: meeste herhalingen in één set (of langste tijd in seconden)
+ * metric is 'reps' of 'time' (zie exercises.js). Geeft null als er niets bruikbaars is.
+ */
+export function performance(sets, metric = 'reps') {
+  const valid = sets.filter((s) => Number(s.reps) > 0);
+  if (!valid.length) return null;
+  if (metric !== 'time' && valid.some((s) => Number(s.weight) > 0)) {
+    const b = bestSet(valid);
+    return { value: b.e1rm, unit: 'kg', kind: 'e1rm' };
+  }
+  const max = Math.max(...valid.map((s) => Number(s.reps)));
+  return metric === 'time' ? { value: max, unit: 's', kind: 'time' } : { value: max, unit: 'reps', kind: 'reps' };
+}
+
+/** Procentuele verandering van a naar b, of null. */
+export function pctChange(a, b) {
+  if (!(a > 0) || b == null) return null;
+  return ((b - a) / a) * 100;
+}
+
+/** Omgekeerde Epley: welk gewicht hoort bij een set van `reps` herhalingen, gegeven een (geschatte) 1RM. */
+export function weightForReps(oneRM, reps) {
+  const r = Number(reps);
+  if (!(oneRM > 0) || !(r > 0)) return 0;
+  if (r === 1) return oneRM;
+  return oneRM / (1 + r / 30);
+}
+
+/** Herhalingsaantallen voor de werkgewicht-tabel. */
+export const REP_TARGETS = [6, 8, 10, 12, 15, 20, 25];
