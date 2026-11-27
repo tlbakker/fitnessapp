@@ -709,7 +709,7 @@ async function viewMore() {
     ),
     h('div', { class: 'card' },
       h('h2', { class: 'flush' }, 'Geschatte 1RM'),
-      h('p', { class: 'small' }, 'De app schat je 1RM met de formule van Epley: gewicht × (1 + reps ÷ 30). Bij sets boven de ±12 herhalingen wordt de schatting minder betrouwbaar.'),
+      h('p', { class: 'small' }, 'De app schat je 1RM met de formule van Epley: gewicht × (1 + reps ÷ 30). Hoe dichter bij je max je test, hoe nauwkeuriger. Bij sets boven de ±12 herhalingen is het een ruwe schatting; vergelijk dan vooral metingen die op dezelfde manier zijn gedaan.'),
     ),
     h('p', { class: 'muted small center' }, 'Fitness · v2'),
   );

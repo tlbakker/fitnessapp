@@ -163,14 +163,15 @@ export const BASELINE = {
     'plank', // Uithouding romp (max. tijd)
   ],
   instructions: `
-<p>Je hoeft geen echte 1RM te tillen: na een jaar rust is dat onnodig riskant. De app schat je 1RM uit een zware set van <strong>5 tot 8 herhalingen</strong> (Epley).</p>
+<p>Je hoeft geen echte 1RM te tillen: na een jaar rust is dat onnodig riskant. Je test met een gewicht voor <strong>12 tot 15 herhalingen</strong>; de app schat daaruit je 1RM (Epley).</p>
 <ol>
-  <li><strong>Warm op</strong>: 5 minuten cardio, daarna per oefening 2 à 3 lichte opbouwsets (bijv. 10 reps licht, 5 reps middel). Log die gerust; de zwaarste telt.</li>
-  <li><strong>Testset</strong>: kies een gewicht waarmee je 5 tot 8 nette herhalingen haalt en stop als er nog 1 à 2 in de tank zitten. Te makkelijk (meer dan 10)? Rust 3 minuten en probeer zwaarder.</li>
+  <li><strong>Warm op</strong>: 5 minuten cardio, daarna per oefening 1 à 2 lichte opbouwsets (bijv. 12 reps op de helft van je testgewicht). Log die gerust; de zwaarste telt.</li>
+  <li><strong>Testset</strong>: kies een gewicht waarmee je 12 tot 15 nette herhalingen haalt en stop als er nog 1 à 2 in de tank zitten, of zodra je techniek inzakt. Haal je er meer dan 18? Rust 3 minuten en probeer iets zwaarder.</li>
   <li><strong>Rust</strong> 2 à 3 minuten tussen zware sets.</li>
   <li><strong>Uithouding</strong>: push-ups zoveel mogelijk in één set met nette techniek; plank zo lang mogelijk (vul de seconden in bij "sec").</li>
 </ol>
 <p>Twaalf oefeningen is veel voor één keer. Splits gerust over twee dagen: start dan de tweede dag opnieuw een nulmeting en verwijder wat je al gedaan hebt.</p>
+<p>Bij 12 tot 15 herhalingen is de geschatte 1RM grover dan bij zware sets: zie hem als startpunt voor je trainingsgewichten, niet als exacte max. Doe de volgende nulmeting op dezelfde manier, dan is de vergelijking eerlijk.</p>
 <p>Herhaal de nulmeting na 8 tot 12 weken om je vooruitgang te zien.</p>`,
 };
 
