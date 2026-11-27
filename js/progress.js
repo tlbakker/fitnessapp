@@ -1,6 +1,6 @@
 // Voortgang: kracht/uithouding per oefening en lichaamsmetingen.
 import * as db from './db.js';
-import { h, todayISO, fmtDate, sortSessions, toast } from './ui.js';
+import { h, fill, todayISO, fmtDate, sortSessions, toast } from './ui.js';
 import { fmt, performance, pctChange } from './calc.js';
 import { BASELINE, groupLabel } from './exercises.js';
 import { lineChart } from './chart.js';
@@ -118,7 +118,7 @@ function exerciseChartCard(perf, ex) {
     const first = pts[0];
     const last = pts[pts.length - 1];
     const best = pts.reduce((m, p) => (p.value > m.value ? p : m), pts[0]);
-    body.replaceChildren(
+    fill(body, 
       h('div', { class: 'stats' },
         h('div', {}, h('div', { class: 'stat' }, `${fmt(last.value)}`), h('div', { class: 'muted small' }, `Laatst (${unit})`)),
         h('div', {}, h('div', { class: 'stat' }, `${fmt(best.value)}`), h('div', { class: 'muted small' }, `Beste (${unit})`)),

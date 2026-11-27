@@ -12,6 +12,10 @@ server en er gaat niets naar GitHub.
 - 85 vooringeladen oefeningen per spiergroep, waaronder Technogym-apparaten, plus eigen oefeningen
 - Geschiedenis per training en per oefening
 - Geschatte 1RM volgens Epley: gewicht × (1 + reps ÷ 30)
+- Vaste workouts met een rep-doel per set (bijv. 6 · 10 · 15); het gewicht per set rekent de app uit je eigen 1RM
+- Standaardworkouts in de app (`BUILTIN_WORKOUTS` in `js/exercises.js`), te kopiëren en aan te passen
+- Workouts delen via link of bestand (alleen oefeningen + schema, nooit gewichten of trainingen)
+- Agenda: maandoverzicht, workouts plannen (ook wekelijks herhalen); gepland telt pas als gedaan als hij gelogd is
 - Oefeningen binnen een training inklappen (gaat automatisch bij het toevoegen van een nieuwe)
 - Nulmeting: 12 basisoefeningen (één per spiergroep + uithouding) met uitleg, voor je startniveau
 - Lichaamsmetingen: gewicht, vet%, spiermassa, buikomtrek, visceraal vet
@@ -34,6 +38,8 @@ npm test      # unit-tests (Node 22)
 - `js/exercises.js` – de oefeningenlijst. Ids nooit wijzigen, alleen toevoegen.
 - `js/db.js` – opslag. Stores voor vaste workouts (`templates`) en agenda (`plans`) staan al klaar voor stap 2.
 - `js/calc.js` – rekenfuncties (Epley, volume, prestatie per training).
+- `js/workouts.js` + `js/agenda.js` – vaste workouts en agenda.
+- `js/schemes.js` – rep-schema's en het in-/uitpakken van gedeelde workouts.
 - `js/progress.js` + `js/chart.js` – voortgangsscherm en SVG-grafieken.
 - `sw.js` – offline cache. Verhoog `VERSION` bij elke release.
 

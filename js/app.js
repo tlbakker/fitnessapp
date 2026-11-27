@@ -1,8 +1,11 @@
-import { BUILTIN_EXERCISES, MUSCLE_GROUPS, EQUIPMENT, groupLabel, BASELINE, TEMPLATES } from './exercises.js';
+import { BUILTIN_EXERCISES, MUSCLE_GROUPS, EQUIPMENT, groupLabel, BASELINE } from './exercises.js';
 import { epley1RM, bestSet, volume, fmt, weightForReps, roundTo, REP_TARGETS } from './calc.js';
 import * as db from './db.js';
-import { h, todayISO, fmtDate, setLabel, sortSessions, toast } from './ui.js';
+import { h, fill, todayISO, fmtDate, setLabel, sortSessions, toast } from './ui.js';
 import { viewProgress } from './progress.js';
+import { viewWorkouts, viewWorkoutEdit, viewImport, workoutRow, allTemplates, getTemplate, templateItems, saveSessionAsWorkout } from './workouts.js';
+import { targetReps, schemeLabel } from './schemes.js';
+import { viewAgenda, plannedToday } from './agenda.js';
 
 const $app = document.getElementById('app');
 const $title = document.getElementById('title');
@@ -45,11 +48,17 @@ async function recentExerciseIds(limit = 12) {
 
 // ---------- router ----------
 
+/** Gedeelde functies voor de schermen in andere modules. */
+const ctx = () => ({ ex, allExercises, setTitle, render, openPicker, startSession, sessionRow, reloadExercises: loadExercises });
+
 const routes = [
   [/^#?\/?$/, viewTraining],
   [/^#\/training$/, viewTraining],
   [/^#\/sessie\/(.+)$/, (id) => viewSession(id)],
-  [/^#\/geschiedenis$/, viewHistory],
+  [/^#\/(agenda|geschiedenis)$/, () => viewAgenda(ctx())],
+  [/^#\/workouts$/, () => viewWorkouts(ctx())],
+  [/^#\/import\/(.+)$/, (code) => viewImport(code, ctx())],
+  [/^#\/workout\/(.+)$/, (id) => viewWorkoutEdit(id, ctx())],
   [/^#\/voortgang$/, () => viewProgress({ ex, setTitle, render })],
   [/^#\/oefeningen$/, viewExercises],
   [/^#\/oefening\/(.+)$/, (id) => viewExercise(decodeURIComponent(id))],
@@ -64,7 +73,8 @@ async function render() {
       const tab = hash.split('/')[1] || 'training';
       document.querySelectorAll('nav a').forEach((a) => {
         const t = a.getAttribute('href').split('/')[1];
-        const active = t === tab || (t === 'training' && tab === 'sessie') || (t === 'oefeningen' && tab === 'oefening');
+        const alias = { sessie: 'training', workouts: 'training', workout: 'training', oefening: 'oefeningen', geschiedenis: 'agenda' };
+        const active = t === (alias[tab] || tab);
         a.classList.toggle('active', active);
       });
       const node = await fn(...m.slice(1));
@@ -88,18 +98,27 @@ async function activeSession() {
   return sessions.find((s) => !s.finishedAt);
 }
 
-async function startSession(template) {
+async function startSession(template, { planId } = {}) {
+  const items = templateItems(template);
+  const targets = {};
+  for (const it of items) if (it.reps.length) targets[it.exerciseId] = { reps: [...it.reps] };
   const s = {
     id: db.newId(),
     userId: db.USER_ID,
     date: todayISO(),
     startedAt: new Date().toISOString(),
     finishedAt: null,
-    exerciseIds: template?.exerciseIds ? [...template.exerciseIds] : [],
+    exerciseIds: [...new Set(items.map((i) => i.exerciseId))],
+    targets,
     note: '',
     templateId: template?.id ?? null,
+    planId: planId ?? null,
   };
   await db.put('sessions', s);
+  if (planId) {
+    const plan = await db.get('plans', planId);
+    if (plan) await db.put('plans', { ...plan, sessionId: s.id });
+  }
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
   location.hash = `#/sessie/${s.id}`;
 }
@@ -110,13 +129,29 @@ async function viewTraining() {
   setTitle('Training');
   const sessions = sortSessions(await db.getAll('sessions')).slice(0, 3);
   const sets = await db.getAll('sets');
+  const today = await plannedToday();
+  const everything = await allTemplates();
+  const templates = everything.filter((t) => !t.builtin);
   return h(
     'div',
     { class: 'stack' },
+    today.map(({ plan, session }) => {
+      const t = everything.find((x) => x.id === plan.templateId);
+      if (!t) return null;
+      return h('div', { class: 'card stack tight planned-today' },
+        h('div', { class: 'muted small' }, 'Gepland voor vandaag'),
+        h('div', { class: 'strong' }, t.name),
+        h('button', { class: 'btn primary', onclick: () => startSession(t, { planId: plan.id }) }, session ? 'Verder met deze training' : `Start ${t.name}`),
+      );
+    }),
     h('div', { class: 'card hero' },
       h('p', { class: 'muted' }, fmtDate(todayISO(), { weekday: 'long', day: 'numeric', month: 'long' })),
-      h('button', { class: 'btn primary big', onclick: () => startSession() }, 'Start training'),
+      h('button', { class: 'btn primary big', onclick: () => startSession() }, 'Lege training starten'),
     ),
+    h('div', { class: 'row' }, h('h2', { class: 'grow' }, 'Workouts'), h('a', { class: 'btn small ghost', href: '#/workouts' }, 'Beheren')),
+    templates.length
+      ? templates.map((t) => workoutRow(t, ctx(), { compact: true }))
+      : h('a', { class: 'card link small muted', href: '#/workouts' }, 'Nog geen eigen workouts. Tik hier voor de standaardworkouts in de app, of om er zelf een te maken.'),
     h('div', { class: 'card stack tight' },
       h('div', { class: 'strong' }, 'Nulmeting'),
       h('p', { class: 'small muted flush' }, `${BASELINE.exerciseIds.length} basisoefeningen, één per spiergroep. Hiermee bepaal je je startniveau en geschatte 1RM; het overzicht staat daarna onder Voortgang.`),
@@ -197,7 +232,7 @@ async function viewSession(id) {
           session.finishedAt = new Date().toISOString();
           await save();
           toast('Training opgeslagen 💪');
-          location.hash = '#/geschiedenis';
+          location.hash = '#/agenda';
         },
       }, 'Training afronden');
 
@@ -225,14 +260,14 @@ async function viewSession(id) {
     },
   }, allCollapsed() ? 'Alles uitklappen' : 'Alles inklappen');
 
-  const template = session.templateId ? TEMPLATES.find((t) => t.id === session.templateId) : null;
+  const template = await getTemplate(session.templateId);
 
   return h('div', { class: 'stack' },
     h('div', { class: 'card row' },
       h('label', { class: 'grow' }, h('span', { class: 'muted small' }, 'Datum'), dateInput),
       h('div', { class: 'right small muted' }, vol),
     ),
-    template
+    template?.instructions
       ? h('details', { class: 'card info', open: !sessionSets.length },
           h('summary', { class: 'strong' }, `${template.name}: zo pak je het aan`),
           h('div', { class: 'small', html: template.instructions }),
@@ -247,6 +282,7 @@ async function viewSession(id) {
       h('textarea', { rows: 2, placeholder: 'Hoe ging het?', value: session.note || '', oninput: (e) => { session.note = e.target.value; save(); } }),
     ),
     finishBtn,
+    session.exerciseIds.length ? h('button', { class: 'btn ghost', onclick: () => saveSessionAsWorkout(session, sessionSets, ctx()) }, 'Opslaan als workout') : null,
     deleteBtn,
   );
 }
@@ -324,10 +360,20 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
   };
   sets.forEach(addRow);
 
+  // Doel per set (uit een workout) en het gewicht dat daarbij hoort volgens je laatste geschatte 1RM.
+  const prevBest = prev ? bestSet(prev.sets) : null;
+  const goal = targetReps(session.targets?.[exId]);
+  const suggestFor = (reps) => (!isTime && prevBest?.e1rm && reps ? roundTo(weightForReps(prevBest.e1rm, reps), 0.5) : null);
+
   const addSet = async () => {
     const last = sets[sets.length - 1];
     const prevSame = prev?.sets[sets.length] || prev?.sets[prev.sets.length - 1];
-    const template = last || prevSame || {};
+    let template = last || prevSame || {};
+    const goalReps = goal[sets.length];
+    if (goalReps) {
+      // Volgens het schema: doel-reps met het berekende gewicht (of anders je laatste gewicht)
+      template = { reps: goalReps, weight: suggestFor(goalReps) ?? template.weight ?? null };
+    }
     const s = {
       id: db.newId(),
       userId: db.USER_ID,
@@ -355,7 +401,16 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
     render();
   };
 
-  const prevBest = prev ? bestSet(prev.sets) : null;
+  let targetLine = null;
+  if (goal.length) {
+    const kg = goal.map(suggestFor);
+    targetLine = h('div', { class: 'small target-line' },
+      h('div', {}, h('span', { class: 'strong' }, `Doel: ${schemeLabel(goal)} reps`)),
+      kg.some((x) => x)
+        ? h('div', { class: 'muted' }, `Gewicht per set: ${kg.map((x) => (x ? fmt(x) : '?')).join(' · ')} kg (max. voor die reps)`)
+        : isTime ? null : h('div', { class: 'muted' }, 'Nog geen 1RM bekend voor deze oefening: kies zelf een gewicht, de volgende keer rekent de app het uit.'),
+    );
+  }
 
   // Inklappen: de status wordt in de training bewaard, zodat hij blijft staan.
   const summary = h('div', { class: 'muted small summary' });
@@ -392,6 +447,7 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
       h('button', { class: 'icon', 'aria-label': 'Oefening verwijderen', onclick: removeExercise }, '🗑'),
     ),
     h('div', { class: 'card-body' },
+    targetLine,
     prev
       ? h('div', { class: 'muted small prev' },
           `Vorige keer (${fmtDate(prev.session.date, { day: 'numeric', month: 'short' })}): `,
@@ -442,7 +498,7 @@ async function openPicker(onPick) {
   ];
 
   function drawChips() {
-    chips.replaceChildren(
+    fill(chips, 
       ...chipDefs.map(([id, label]) =>
         h('button', { class: 'chip' + (group === id ? ' active' : ''), onclick: () => { group = id; drawChips(); draw(); } }, label),
       ),
@@ -457,7 +513,7 @@ async function openPicker(onPick) {
     else if (group === 'technogym') items = allExercises().filter((e) => e.equipment === 'technogym');
     else items = allExercises().filter((e) => e.group === group);
 
-    list.replaceChildren(
+    fill(list, 
       ...items.map((e) =>
         h('button', { class: 'picker-item', onclick: () => pick(e.id) },
           h('span', {}, e.name),
@@ -530,26 +586,6 @@ function openCustomExercise(name, onCreated, existing) {
   nameIn.focus();
 }
 
-// ---------- Geschiedenis ----------
-
-async function viewHistory() {
-  setTitle('Geschiedenis');
-  const sessions = sortSessions(await db.getAll('sessions'));
-  const sets = await db.getAll('sets');
-  if (!sessions.length) return h('p', { class: 'muted center' }, 'Nog geen trainingen.');
-  let lastMonth = '';
-  const out = [];
-  for (const s of sessions) {
-    const month = fmtDate(s.date, { month: 'long', year: 'numeric' });
-    if (month !== lastMonth) {
-      out.push(h('h2', {}, month));
-      lastMonth = month;
-    }
-    out.push(sessionRow(s, sets));
-  }
-  return h('div', { class: 'stack' }, out);
-}
-
 // ---------- Oefeningen ----------
 
 let exQuery = '';
@@ -564,13 +600,13 @@ async function viewExercises() {
   const chipDefs = [['all', 'Alles'], ['used', 'Gedaan'], ['technogym', 'Technogym'], ...MUSCLE_GROUPS.map((g) => [g.id, g.label])];
 
   function draw() {
-    chips.replaceChildren(...chipDefs.map(([id, label]) =>
+    fill(chips, ...chipDefs.map(([id, label]) =>
       h('button', { class: 'chip' + (exGroup === id ? ' active' : ''), onclick: () => { exGroup = id; draw(); } }, label)));
     let items = allExercises().filter((e) => matches(e, exQuery));
     if (exGroup === 'used') items = items.filter((e) => used.has(e.id));
     else if (exGroup === 'technogym') items = items.filter((e) => e.equipment === 'technogym');
     else if (exGroup !== 'all') items = items.filter((e) => e.group === exGroup);
-    list.replaceChildren(
+    fill(list, 
       ...items.map((e) =>
         h('a', { class: 'card row link', href: `#/oefening/${encodeURIComponent(e.id)}` },
           h('div', { class: 'grow' }, h('div', {}, e.name), h('div', { class: 'muted small' }, `${groupLabel(e.group)} · ${EQUIPMENT[e.equipment] || ''}`)),
@@ -744,6 +780,16 @@ window.addEventListener('hashchange', render);
   await loadExercises();
   await render();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    // Nieuwe versie: de service worker haalt die op de achtergrond op. Zodra hij actief is,
+    // bieden we aan om te vernieuwen. Je gegevens blijven gewoon staan.
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) return;
+      const bar = h('div', { class: 'toast update' },
+        'Nieuwe versie van de app ',
+        h('button', { class: 'btn small primary', onclick: () => location.reload() }, 'Vernieuwen'));
+      document.body.append(bar);
+    });
+    navigator.serviceWorker.register('./sw.js').then((reg) => reg.update()).catch(() => {});
   }
 })();

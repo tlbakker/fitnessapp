@@ -175,4 +175,51 @@ export const BASELINE = {
 <p>Herhaal de nulmeting na 8 tot 12 weken om je vooruitgang te zien.</p>`,
 };
 
-export const TEMPLATES = [BASELINE];
+
+// Standaardworkouts die met de app meekomen (net als de oefeningenlijst). Iedereen krijgt ze
+// via een update. Kopieer er een naar "Mijn workouts" om hem aan te passen. Gewichten rekent
+// de app per gebruiker uit de eigen geschatte 1RM.
+const LOW_HIGH = [6, 10, 15];
+const PYRAMID = [15, 10, 6];
+const STRAIGHT = [10, 10, 10];
+const ENDURANCE = [20, 20];
+const w = (ids, reps) => ids.map((exerciseId) => ({ exerciseId, reps: [...reps] }));
+
+export const BUILTIN_WORKOUTS = [
+  {
+    id: 'tpl-fullbody-low-high',
+    name: 'Full body · laag → hoog',
+    description: 'Per oefening 3 sets: zwaar (6), middel (10), licht (15). Kracht én volume in één training.',
+    items: w(['back-squat', 'bench-press', 'tg-lat-machine', 'overhead-press', 'romanian-deadlift', 'tg-low-row'], LOW_HIGH),
+  },
+  {
+    id: 'tpl-fullbody-pyramid',
+    name: 'Full body machines · piramide',
+    description: 'Per oefening 3 sets: licht (15), middel (10), zwaar (6). Opbouwend, goed om in te komen. Alleen Technogym-apparaten.',
+    items: w(['tg-leg-press', 'tg-chest-press', 'tg-low-row', 'tg-shoulder-press', 'tg-leg-curl', 'tg-abdominal-crunch'], PYRAMID),
+  },
+  {
+    id: 'tpl-push',
+    name: 'Push · 3 × 10',
+    description: 'Borst, schouders en triceps.',
+    items: w(['bench-press', 'incline-db-press', 'db-shoulder-press', 'lateral-raise', 'triceps-pushdown'], STRAIGHT),
+  },
+  {
+    id: 'tpl-pull',
+    name: 'Pull · 3 × 10',
+    description: 'Rug, achterkant schouders en biceps.',
+    items: w(['tg-lat-machine', 'barbell-row', 'seated-cable-row', 'face-pull', 'barbell-curl', 'hammer-curl'], STRAIGHT),
+  },
+  {
+    id: 'tpl-legs',
+    name: 'Benen · 3 × 10',
+    description: 'Quadriceps, hamstrings, bilspieren en kuiten.',
+    items: w(['back-squat', 'romanian-deadlift', 'tg-leg-press', 'tg-leg-curl', 'hip-thrust', 'standing-calf-raise'], STRAIGHT),
+  },
+  {
+    id: 'tpl-endurance',
+    name: 'Uithouding machines · 2 × 20',
+    description: 'Lichte circuittraining op Technogym-apparaten: 2 sets van 20 per oefening, korte rust.',
+    items: w(['tg-leg-press', 'tg-chest-press', 'tg-low-row', 'tg-shoulder-press', 'tg-leg-extension', 'tg-abdominal-crunch'], ENDURANCE),
+  },
+];

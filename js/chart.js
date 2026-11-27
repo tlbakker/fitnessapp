@@ -1,6 +1,6 @@
 // Eenvoudige lijngrafiek in SVG (één reeks, tijd op de x-as), zonder externe libraries.
 // Tik of beweeg over de grafiek voor de waarde per datum.
-import { h, fmtDate } from './ui.js';
+import { h, fill, fmtDate } from './ui.js';
 import { fmt } from './calc.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -107,7 +107,7 @@ export function lineChart(points, { unit = '', label = '' } = {}) {
     cross.setAttribute('x2', cx);
     cross.setAttribute('visibility', 'visible');
     dots.forEach((d, i) => d.classList.toggle('active', i === best));
-    tip.replaceChildren(
+    fill(tip, 
       h('div', { class: 'strong' }, `${fmt(p.value)} ${unit}`.trim()),
       h('div', { class: 'muted' }, fmtDate(p.date, { day: 'numeric', month: 'short', year: 'numeric' })),
       p.detail ? h('div', { class: 'muted' }, p.detail) : null,

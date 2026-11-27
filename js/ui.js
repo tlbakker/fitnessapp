@@ -45,3 +45,9 @@ export function toast(msg) {
   document.body.append(t);
   setTimeout(() => t.remove(), 2500);
 }
+
+/** Vervang de inhoud van een element; null/false worden overgeslagen (replaceChildren zou er "null" van maken). */
+export function fill(el, ...children) {
+  el.replaceChildren(...children.flat(Infinity).filter((c) => c != null && c !== false));
+  return el;
+}
