@@ -4,7 +4,7 @@ import * as db from './db.js';
 import { h, fill, todayISO, fmtDate, setLabel, sortSessions, toast } from './ui.js';
 import { viewProgress } from './progress.js';
 import { viewWorkouts, viewWorkoutEdit, viewImport, workoutRow, allTemplates, getTemplate, templateItems, saveSessionAsWorkout } from './workouts.js';
-import { targetReps, schemeLabel } from './schemes.js';
+import { buildTarget, readTarget, schemeLabel } from './schemes.js';
 import { viewAgenda, plannedToday } from './agenda.js';
 
 const $app = document.getElementById('app');
@@ -100,8 +100,12 @@ async function activeSession() {
 
 async function startSession(template, { planId } = {}) {
   const items = templateItems(template);
+  // Doel per oefening vastleggen in de training (bij willekeurige vormen wordt hier geloot)
   const targets = {};
-  for (const it of items) if (it.reps.length) targets[it.exerciseId] = { reps: [...it.reps] };
+  for (const it of items) {
+    const t = buildTarget(it, template?.form);
+    if (t) targets[it.exerciseId] = t;
+  }
   const s = {
     id: db.newId(),
     userId: db.USER_ID,
@@ -362,17 +366,21 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
 
   // Doel per set (uit een workout) en het gewicht dat daarbij hoort volgens je laatste geschatte 1RM.
   const prevBest = prev ? bestSet(prev.sets) : null;
-  const goal = targetReps(session.targets?.[exId]);
-  const suggestFor = (reps) => (!isTime && prevBest?.e1rm && reps ? roundTo(weightForReps(prevBest.e1rm, reps), 0.5) : null);
+  const target = readTarget(session.targets?.[exId]);
+  const goal = target?.sets ?? [];
+  const suggestFor = (load) => (!isTime && prevBest?.e1rm && load ? roundTo(weightForReps(prevBest.e1rm, load), 0.5) : null);
 
   const addSet = async () => {
     const last = sets[sets.length - 1];
     const prevSame = prev?.sets[sets.length] || prev?.sets[prev.sets.length - 1];
     let template = last || prevSame || {};
-    const goalReps = goal[sets.length];
-    if (goalReps) {
-      // Volgens het schema: doel-reps met het berekende gewicht (of anders je laatste gewicht)
-      template = { reps: goalReps, weight: suggestFor(goalReps) ?? template.weight ?? null };
+    const g = goal[sets.length];
+    if (g) {
+      // Volgens de vorm: doel-reps met het gewicht dat bij de load (xRM) hoort
+      template = { reps: g.reps ?? null, weight: suggestFor(g.load ?? g.reps) ?? template.weight ?? null };
+    } else if (target?.total) {
+      // Totaal-reps: steeds hetzelfde gewicht, reps vul je zelf in
+      template = { reps: null, weight: suggestFor(target.load) ?? last?.weight ?? template.weight ?? null };
     }
     const s = {
       id: db.newId(),
@@ -402,19 +410,38 @@ function exerciseCard(session, exId, sessionSets, allSets, allSessions, saveSess
   };
 
   let targetLine = null;
-  if (goal.length) {
-    const kg = goal.map(suggestFor);
+  let updateTotal = () => {};
+  const no1RM = isTime ? null : h('div', { class: 'muted' }, 'Nog geen 1RM bekend voor deze oefening: kies zelf een gewicht, de volgende keer rekent de app het uit.');
+  if (target?.total) {
+    const kg = suggestFor(target.load);
+    const progress = h('span', { class: 'strong' });
+    updateTotal = () => {
+      const done = sets.reduce((n, x) => n + (Number(x.reps) || 0), 0);
+      progress.textContent = `${done} / ${target.total}`;
+      progress.classList.toggle('done', done >= target.total);
+    };
+    updateTotal();
     targetLine = h('div', { class: 'small target-line' },
-      h('div', {}, h('span', { class: 'strong' }, `Doel: ${schemeLabel(goal)} reps`)),
+      h('div', {}, h('span', { class: 'strong' }, `${target.label}: `), `${target.total} reps totaal · `, progress),
+      kg ? h('div', { class: 'muted' }, `Gewicht: ≈ ${fmt(kg)} kg (je ${target.load}RM). Voeg sets toe tot je op ${target.total} zit.`) : no1RM,
+    );
+  } else if (goal.length) {
+    const reps = goal.map((g) => g.reps);
+    const kg = goal.map((g) => suggestFor(g.load ?? g.reps));
+    targetLine = h('div', { class: 'small target-line' },
+      h('div', {},
+        target.label && target.form !== 'custom' ? h('span', { class: 'strong' }, `${target.label}: `) : h('span', { class: 'strong' }, 'Doel: '),
+        `${schemeLabel(reps)} reps`),
       kg.some((x) => x)
         ? h('div', { class: 'muted' }, `Gewicht per set: ${kg.map((x) => (x ? fmt(x) : '?')).join(' · ')} kg (max. voor die reps)`)
-        : isTime ? null : h('div', { class: 'muted' }, 'Nog geen 1RM bekend voor deze oefening: kies zelf een gewicht, de volgende keer rekent de app het uit.'),
+        : no1RM,
     );
   }
 
   // Inklappen: de status wordt in de training bewaard, zodat hij blijft staan.
   const summary = h('div', { class: 'muted small summary' });
   const updateSummary = () => {
+    updateTotal();
     const filled = sets.filter((x) => x.reps);
     if (!filled.length) {
       summary.textContent = 'Nog geen sets';

@@ -1,16 +1,25 @@
-// Vaste workouts: opgeslagen groepen oefeningen met een rep-doel per set.
+// Vaste workouts: een trainingsvorm (zie schemes.js) plus een selectie oefeningen.
 // Workouts zijn deelbaar via een link of bestand; gewichten gaan nooit mee, die rekent
 // ieders app zelf uit de eigen geschatte 1RM.
 import * as db from './db.js';
 import { h, fill, toast, todayISO } from './ui.js';
 import { BASELINE, BUILTIN_WORKOUTS } from './exercises.js';
-import { SCHEMES, normalizeItem, schemeLabel, packWorkout, encodeWorkout, decodeWorkout } from './schemes.js';
+import { FORMS, CUSTOM, formById, normalizeItem, itemLabel, packWorkout, encodeWorkout, decodeWorkout } from './schemes.js';
 
-/** De oefeningen van een workout als [{ exerciseId, reps: number[] }]. */
+/** De oefeningen van een workout als [{ exerciseId, form, reps }] (form null = geen doel). */
 export function templateItems(t) {
   if (!t) return [];
-  if (t.items) return t.items.map(normalizeItem);
-  return (t.exerciseIds || []).map((exerciseId) => ({ exerciseId, reps: [] }));
+  if (t.items) return t.items.map((i) => normalizeItem(i, t.form));
+  return (t.exerciseIds || []).map((exerciseId) => ({ exerciseId, form: null, reps: [] }));
+}
+
+/** Items zoals ze opgeslagen worden: alleen een eigen vorm/reps als die afwijkt van de workout. */
+function storeItems(items, workoutForm) {
+  return items.map((i) => {
+    if (i.form === CUSTOM) return { exerciseId: i.exerciseId, form: CUSTOM, reps: i.reps.filter((r) => r > 0) };
+    if (i.form && i.form !== workoutForm) return { exerciseId: i.exerciseId, form: i.form };
+    return { exerciseId: i.exerciseId };
+  });
 }
 
 const BUILTINS = [...BUILTIN_WORKOUTS, BASELINE].map((t) => ({ ...t, builtin: true }));
@@ -31,14 +40,10 @@ async function copyToOwn(t) {
   const own = await db.getAll('templates');
   let name = t.name;
   for (let n = 2; own.some((x) => x.name === name); n++) name = `${t.name} (${n})`;
-  const copy = { id: db.newId(), userId: db.USER_ID, name, items: templateItems(t), basedOn: t.id, createdAt: new Date().toISOString() };
+  const copy = { id: db.newId(), userId: db.USER_ID, name, form: t.form ?? null, items: storeItems(templateItems(t), t.form), basedOn: t.id, createdAt: new Date().toISOString() };
   await db.put('templates', copy);
   toast('Gekopieerd naar je eigen workouts');
   location.hash = `#/workout/${copy.id}`;
-}
-
-export function targetLabel(target) {
-  return schemeLabel(normalizeItem({ exerciseId: '', ...target }).reps);
 }
 
 // ---------- Overzicht ----------
@@ -84,7 +89,7 @@ export function workoutRow(t, ctx, { compact = false } = {}) {
     h('div', { class: 'row' },
       h('div', { class: 'grow' },
         h('div', { class: 'strong' }, t.name),
-        h('div', { class: 'muted small' }, `${items.length} ${items.length === 1 ? 'oefening' : 'oefeningen'}`, compact ? '' : ` · ${names.slice(0, 4).join(', ')}${names.length > 4 ? ' …' : ''}`),
+        h('div', { class: 'muted small' }, formById(t.form) ? `${formById(t.form).name} · ` : '', `${items.length} ${items.length === 1 ? 'oefening' : 'oefeningen'}`, compact ? '' : ` · ${names.slice(0, 4).join(', ')}${names.length > 4 ? ' …' : ''}`),
         !compact && t.description ? h('div', { class: 'muted small' }, t.description) : null,
       ),
       t.builtin ? h('button', { class: 'icon', 'aria-label': `${t.name} kopiëren naar mijn workouts`, title: 'Kopiëren om aan te passen', onclick: () => copyToOwn(t) }, '📄') : null,
@@ -106,72 +111,107 @@ export async function viewWorkoutEdit(id, ctx) {
   }
   ctx.setTitle(isNew ? 'Nieuwe workout' : 'Workout bewerken');
   const t = existing
-    ? { ...structuredClone(existing), items: templateItems(existing) }
-    : { id: db.newId(), userId: db.USER_ID, name: '', items: [], createdAt: new Date().toISOString() };
+    ? { ...structuredClone(existing), form: existing.form ?? null }
+    : { id: db.newId(), userId: db.USER_ID, name: '', form: FORMS[0].id, items: [], createdAt: new Date().toISOString() };
+  // Werk-items: form null = volgt de vorm van de workout
+  let items = (t.items || []).map((i) => {
+    const n = normalizeItem(i, null);
+    return { ...n, form: n.form === t.form ? null : n.form };
+  });
 
   const nameIn = h('input', { type: 'text', value: t.name, placeholder: 'Bijv. Push, Benen, Full body A' });
+  const formList = h('div', { class: 'form-list' });
   const list = h('div', { class: 'stack tight' });
 
-  function schemeChips(apply, current) {
-    return h('div', { class: 'chips' },
-      SCHEMES.map((s) =>
+  function drawForms() {
+    fill(formList,
+      FORMS.map((f) =>
         h('button', {
-          class: 'chip' + (current && current.join() === s.reps.join() ? ' active' : ''),
+          class: 'form-option' + (t.form === f.id ? ' chosen' : ''),
           type: 'button',
-          title: s.reps.join(' · '),
-          onclick: () => apply([...s.reps]),
-        }, `${s.label}`),
+          'aria-pressed': String(t.form === f.id),
+          onclick: () => { t.form = f.id; drawForms(); draw(); },
+        },
+          h('span', { class: 'strong' }, f.name),
+          h('span', { class: 'muted small' }, f.description),
+          h('span', { class: 'small form-preview' }, itemLabel({ form: f.id })),
+        ),
+      ),
+    );
+  }
+
+  function formSelect(item) {
+    const current = item.form ?? '';
+    return h('select', {
+      'aria-label': 'Vorm voor deze oefening',
+      onchange: (e) => {
+        const v = e.target.value;
+        item.form = v || null;
+        if (v === CUSTOM && !item.reps.length) {
+          const base = formById(t.form)?.build();
+          item.reps = base?.sets?.length ? base.sets.map((x) => x.reps) : [10, 10, 10];
+        }
+        draw();
+      },
+    },
+      h('option', { value: '', selected: current === '' }, `Vorm van de workout${formById(t.form) ? ` (${formById(t.form).name})` : ''}`),
+      FORMS.map((f) => h('option', { value: f.id, selected: current === f.id }, f.name)),
+      h('option', { value: CUSTOM, selected: current === CUSTOM }, 'Eigen reps per set'),
+    );
+  }
+
+  function customReps(item) {
+    return h('div', { class: 'set-targets' },
+      item.reps.map((r, j) =>
+        h('label', { class: 'set-target' },
+          h('span', { class: 'muted small' }, `Set ${j + 1}`),
+          h('input', {
+            type: 'number', inputmode: 'numeric', min: 1, step: 1, value: r, 'aria-label': `Set ${j + 1} reps`,
+            oninput: (e) => { item.reps[j] = Number(e.target.value) || 0; },
+          }),
+        ),
+      ),
+      h('div', { class: 'set-target-btns' },
+        h('button', { class: 'icon', type: 'button', 'aria-label': 'Set toevoegen', onclick: () => { item.reps.push(item.reps[item.reps.length - 1] || 10); draw(); } }, '＋'),
+        item.reps.length > 1 ? h('button', { class: 'icon', type: 'button', 'aria-label': 'Laatste set weghalen', onclick: () => { item.reps.pop(); draw(); } }, '－') : null,
       ),
     );
   }
 
   function draw() {
     fill(list,
-      t.items.map((item, i) =>
-        h('div', { class: 'card workout-item' },
+      items.map((item, i) =>
+        h('div', { class: 'card workout-item stack tight' },
           h('div', { class: 'row' },
-            h('div', { class: 'grow strong' }, ctx.ex(item.exerciseId).name),
-            h('button', { class: 'icon', 'aria-label': 'Omhoog', disabled: i === 0, onclick: () => { t.items.splice(i - 1, 0, t.items.splice(i, 1)[0]); draw(); } }, '↑'),
-            h('button', { class: 'icon', 'aria-label': 'Omlaag', disabled: i === t.items.length - 1, onclick: () => { t.items.splice(i + 1, 0, t.items.splice(i, 1)[0]); draw(); } }, '↓'),
-            h('button', { class: 'icon', 'aria-label': 'Verwijderen', onclick: () => { t.items.splice(i, 1); draw(); } }, '✕'),
-          ),
-          h('div', { class: 'set-targets' },
-            item.reps.map((r, j) =>
-              h('label', { class: 'set-target' },
-                h('span', { class: 'muted small' }, `Set ${j + 1}`),
-                h('input', {
-                  type: 'number', inputmode: 'numeric', min: 1, step: 1, value: r, 'aria-label': `Set ${j + 1} reps`,
-                  oninput: (e) => { item.reps[j] = Number(e.target.value) || 0; },
-                }),
-              ),
+            h('div', { class: 'grow' },
+              h('div', { class: 'strong' }, ctx.ex(item.exerciseId).name),
+              item.form === CUSTOM ? null : h('div', { class: 'muted small' }, itemLabel(item, t.form)),
             ),
-            h('div', { class: 'set-target-btns' },
-              h('button', { class: 'icon', type: 'button', 'aria-label': 'Set toevoegen', onclick: () => { item.reps.push(item.reps[item.reps.length - 1] || 10); draw(); } }, '＋'),
-              item.reps.length ? h('button', { class: 'icon', type: 'button', 'aria-label': 'Laatste set weghalen', onclick: () => { item.reps.pop(); draw(); } }, '－') : null,
-            ),
+            h('button', { class: 'icon', 'aria-label': 'Omhoog', disabled: i === 0, onclick: () => { items.splice(i - 1, 0, items.splice(i, 1)[0]); draw(); } }, '↑'),
+            h('button', { class: 'icon', 'aria-label': 'Omlaag', disabled: i === items.length - 1, onclick: () => { items.splice(i + 1, 0, items.splice(i, 1)[0]); draw(); } }, '↓'),
+            h('button', { class: 'icon', 'aria-label': 'Verwijderen', onclick: () => { items.splice(i, 1); draw(); } }, '✕'),
           ),
-          h('div', { class: 'muted small' }, 'reps per set'),
-          schemeChips((reps) => { item.reps = reps; draw(); }, item.reps),
+          formSelect(item),
+          item.form === CUSTOM ? customReps(item) : null,
         ),
       ),
-      t.items.length ? null : h('p', { class: 'muted center small' }, 'Nog geen oefeningen.'),
+      items.length ? null : h('p', { class: 'muted center small' }, 'Nog geen oefeningen. Elke oefening die je toevoegt krijgt de gekozen vorm.'),
     );
   }
+  drawForms();
   draw();
 
   return h('div', { class: 'stack' },
     h('label', { class: 'card' }, h('span', { class: 'muted small' }, 'Naam'), nameIn),
-    h('div', { class: 'card stack tight' },
-      h('div', { class: 'strong' }, 'Schema voor alle oefeningen'),
-      h('p', { class: 'muted small flush' }, 'Kies een concept; je kunt daarna per oefening nog afwijken. Het gewicht per set rekent de app tijdens de training uit je eigen geschatte 1RM.'),
-      schemeChips((reps) => { t.items.forEach((it) => (it.reps = [...reps])); draw(); }),
-    ),
+    h('h2', {}, '1. Trainingsvorm'),
+    h('p', { class: 'muted small flush' }, 'Het gewicht per set rekent de app tijdens de training uit je eigen geschatte 1RM.'),
+    formList,
+    h('h2', {}, '2. Oefeningen'),
     list,
     h('button', {
       class: 'btn',
       onclick: () => ctx.openPicker((exId) => {
-        const last = t.items[t.items.length - 1];
-        t.items.push({ exerciseId: exId, reps: last ? [...last.reps] : [10, 10, 10] });
+        items.push({ exerciseId: exId, form: null, reps: [] });
         draw();
       }),
     }, '+ Oefening toevoegen'),
@@ -180,8 +220,8 @@ export async function viewWorkoutEdit(id, ctx) {
       onclick: async () => {
         t.name = nameIn.value.trim();
         if (!t.name) return toast('Geef de workout een naam.');
-        if (!t.items.length) return toast('Voeg minstens één oefening toe.');
-        t.items = t.items.map((it) => ({ exerciseId: it.exerciseId, reps: it.reps.filter((r) => r > 0) }));
+        if (!items.length) return toast('Voeg minstens één oefening toe.');
+        t.items = storeItems(items, t.form);
         t.updatedAt = new Date().toISOString();
         await db.put('templates', t);
         toast('Workout opgeslagen');
@@ -206,8 +246,9 @@ export function saveSessionAsWorkout(session, sessionSets, ctx) {
   const items = session.exerciseIds.map((exerciseId) => {
     const done = sessionSets.filter((s) => s.exerciseId === exerciseId && s.reps).sort((a, b) => a.idx - b.idx);
     const target = session.targets?.[exerciseId];
-    const reps = done.length ? done.map((s) => Number(s.reps)) : normalizeItem({ exerciseId, ...target }).reps;
-    return { exerciseId, reps };
+    if (done.length) return { exerciseId, form: CUSTOM, reps: done.map((s) => Number(s.reps)) };
+    if (target?.form && target.form !== CUSTOM) return { exerciseId, form: target.form, reps: [] };
+    return { exerciseId, form: target?.sets?.length ? CUSTOM : null, reps: target?.sets?.map((x) => x.reps).filter(Boolean) ?? [] };
   });
   const nameIn = h('input', { type: 'text', placeholder: 'Naam van de workout' });
   const close = () => overlay.remove();
@@ -220,13 +261,13 @@ export function saveSessionAsWorkout(session, sessionSets, ctx) {
           e.preventDefault();
           const name = nameIn.value.trim();
           if (!name) return;
-          await db.put('templates', { id: db.newId(), userId: db.USER_ID, name, items, createdAt: new Date().toISOString() });
+          await db.put('templates', { id: db.newId(), userId: db.USER_ID, name, form: null, items: storeItems(items, null), createdAt: new Date().toISOString() });
           close();
           toast(`Workout "${name}" opgeslagen`);
         },
       },
         nameIn,
-        h('p', { class: 'muted small flush' }, items.map((i) => `${ctx.ex(i.exerciseId).name}${i.reps.length ? ` (${schemeLabel(i.reps)})` : ''}`).join(', ')),
+        h('p', { class: 'muted small flush' }, items.map((i) => `${ctx.ex(i.exerciseId).name}${itemLabel(i) ? ` (${itemLabel(i)})` : ''}`).join(', ')),
         h('button', { class: 'btn primary', type: 'submit' }, 'Opslaan'),
       ),
     ),
@@ -307,11 +348,12 @@ export async function viewImport(code, ctx) {
     h('div', { class: 'card stack tight' },
       h('p', { class: 'muted small flush' }, 'Iemand heeft een workout met je gedeeld. De gewichten rekent jouw app uit jouw eigen geschatte 1RM; doe eventueel eerst de nulmeting.'),
       h('label', {}, h('span', { class: 'muted small' }, 'Naam'), nameIn),
+      formById(data.form) ? h('div', { class: 'small' }, h('span', { class: 'muted' }, 'Vorm: '), formById(data.form).name) : null,
     ),
     h('div', { class: 'card' },
       h('table', { class: 'data' },
-        h('thead', {}, h('tr', {}, h('th', {}, 'Oefening'), h('th', { class: 'num' }, 'Reps per set'))),
-        h('tbody', {}, data.items.map((i) => h('tr', {}, h('td', {}, exName(i.exerciseId)), h('td', { class: 'num' }, schemeLabel(i.reps) || '–')))),
+        h('thead', {}, h('tr', {}, h('th', {}, 'Oefening'), h('th', { class: 'num' }, 'Doel'))),
+        h('tbody', {}, data.items.map((i) => h('tr', {}, h('td', {}, exName(i.exerciseId)), h('td', { class: 'num' }, itemLabel(i, data.form) || '–')))),
       ),
     ),
     h('button', {
@@ -325,6 +367,7 @@ export async function viewImport(code, ctx) {
           id: db.newId(),
           userId: db.USER_ID,
           name: nameIn.value.trim() || data.name,
+          form: data.form,
           items: data.items,
           createdAt: new Date().toISOString(),
           importedAt: todayISO(),
