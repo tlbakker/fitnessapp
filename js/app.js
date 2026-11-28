@@ -8,6 +8,7 @@ import { buildTarget, readTarget, schemeLabel, setLabel as goalSetLabel } from '
 import { viewAgenda, plannedToday } from './agenda.js';
 import { greeting } from './greeting.js';
 import { estimate1RM, startWeight, ageFrom, EXPERIENCE, STRENGTH_RATIOS } from './estimate.js';
+import { garminCard } from './garmin.js';
 
 const $app = document.getElementById('app');
 const $title = document.getElementById('title');
@@ -296,6 +297,7 @@ async function viewSession(id) {
       h('span', { class: 'muted small' }, 'Notitie'),
       h('textarea', { rows: 2, placeholder: 'Hoe ging het?', value: session.note || '', oninput: (e) => { session.note = e.target.value; save(); } }),
     ),
+    sessionSets.length || session.hr ? garminCard(session, sessionSets, ex) : null,
     finishBtn,
     session.exerciseIds.length ? h('button', { class: 'btn ghost', onclick: () => saveSessionAsWorkout(session, sessionSets, ctx()) }, 'Opslaan als workout') : null,
     deleteBtn,
@@ -937,7 +939,7 @@ async function viewMore() {
 }
 
 // Moet gelijk zijn aan VERSION in sw.js.
-const APP_VERSION = 'v7';
+const APP_VERSION = 'v8';
 let reloading = false;
 
 /** Noodknop: gooi de app-cache weg en laad alles opnieuw. Je gegevens blijven staan. */
