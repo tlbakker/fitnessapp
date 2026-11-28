@@ -272,6 +272,10 @@ a.btn.small { display: inline-block; }
 .target-line .done { color: var(--accent); }
 @media (max-width: 360px) { .form-list { grid-template-columns: 1fr; } }
 
+/* Keuzeknoppen naast elkaar (bijv. man/vrouw) */
+.seg { display: flex; gap: 8px; margin-top: 4px; }
+.seg .btn { flex: 1; }
+
 /* Garmin: hartslag bij een training */
 .hr-stats { display: flex; gap: 18px; flex-wrap: wrap; }
 .hr-stats div { display: flex; flex-direction: column; }
